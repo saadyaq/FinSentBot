@@ -1,0 +1,20 @@
+#kafka
+kafka-python
+#Finance API
+yfinance
+
+#Traitement NLP
+transformers
+torch
+sentencepiece
+
+#Scraping
+requests
+beautifulsoup4
+
+#Dashboard
+streamlit
+
+#Utilitaires
+pandas
+python-dotenv
