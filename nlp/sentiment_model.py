@@ -23,8 +23,8 @@ class SentimentModel:
         inputs=self.tokenizer(
             text,
             return_tensors="pt",
-            truncate=True,
-            padding=True,
+            truncation=True,
+            padding='max_length',
             max_length=256
         )
 
@@ -34,7 +34,7 @@ class SentimentModel:
             probas=torch.softmax(logits,dim=1).numpy()[0]
             
         label_probs = {
-            self.id2label[str(i)]: prob
+            self.id2label[i]: prob
             for i, prob in enumerate(probas)
         }
 
@@ -42,5 +42,5 @@ class SentimentModel:
         positive_score = label_probs.get("positive", 0)
         negative_score = label_probs.get("negative", 0)
         score = round(positive_score - negative_score, 4)
-        return score
+        return score,label_probs
         
