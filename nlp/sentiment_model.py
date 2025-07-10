@@ -42,5 +42,5 @@ class SentimentModel:
         positive_score = label_probs.get("positive", 0)
         negative_score = label_probs.get("negative", 0)
         score = round(positive_score - negative_score, 4)
-        return score,label_probs
+        return score
         

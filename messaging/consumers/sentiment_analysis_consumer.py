@@ -21,8 +21,8 @@ def main():
     #Initialmisation du producer
 
     producer = KafkaProducer(
-        bootstrap_servers=KAFKA_CONFIG["bootsrap_servers"],
-        value_deserializer= lambda v : json.dumps(v).encode('utf-8'),
+        bootstrap_servers=KAFKA_CONFIG["bootstrap_servers"],
+        value_serializer= lambda v : json.dumps(v).encode('utf-8'),
         **KAFKA_CONFIG["producer_config"]
     )
 
@@ -44,7 +44,7 @@ def main():
 
             enriched_article={
                 **article,
-                "sentiment_score":score
+                "sentiment_score":float(score)
             }
 
             #Envoyer dans news_sentiment
