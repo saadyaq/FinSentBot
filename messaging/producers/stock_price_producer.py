@@ -1,9 +1,16 @@
 from kafka import KafkaProducer
 import yfinance as yf 
-import json
-import time 
-from datetime import datetime
+import json, time
+import pandas as pd
+from datetime import datetime, timezone
 from config.kafka_config import KAFKA_CONFIG
+
+
+
+def get_sp500_symbols():
+    url="https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+    df=pd.read_html(url)[0]
+    return df['Symbol'].tolist()
 
 producer = KafkaProducer(
     bootstrap_servers=KAFKA_CONFIG["bootstrap_servers"],
@@ -11,7 +18,7 @@ producer = KafkaProducer(
     **KAFKA_CONFIG["producer_config"]
 )
 
-SYMBOLS = ["AAPL", "MSFT", "GOOG", "AMZN", "TSLA"]
+SYMBOLS = get_sp500_symbols()[:50]
 
 while True :
 
@@ -31,12 +38,13 @@ while True :
             message = {
                 "symbol": symbol,
                 "price": round(current_price, 2),
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
             producer.send(KAFKA_CONFIG["topics"]["stock_prices"], value=message)
             print(f"📤 Sent: {message}")
-
+            with open("/home/saadyaq/SE/Python/finsentbot/data/raw/stock_prices.jsonl","a") as f:
+                f.write(json.dumps(message) +'\n')
         print("✅ Sleeping 10 seconds...\n")
         time.sleep(10)
 

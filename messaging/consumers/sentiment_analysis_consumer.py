@@ -51,6 +51,9 @@ def main():
             
             producer.send(KAFKA_CONFIG["topics"]["news_sentiment"],value=enriched_article)
             print(f"📤 Sent enriched article with score {score}")
+
+            with open('/home/saadyaq/SE/Python/finsentbot/data/raw/news_sentiment.jsonl',"a") as f:
+                f.write(json.dumps(enriched_article) +'\n')
         except Exception as e:
             print(f"⚠️ Error processing message: {e}")
 
