@@ -15,3 +15,10 @@ THRESHOLD= 0.005
 def load_data():
     news_df=pd.read_json(NEWS_PATH,lines=True)
     prices_df=pd.read_html(PRICES_PATH, lines=True)
+
+    #Convertir en datetime
+    news_df["timestamp"]=pd.to_datetime(news_df["timestamp"])
+    prices_df["timestamp"]=pd.to_datetime(prices_df["timestamp"])
+
+    return news_df, prices_df
+
