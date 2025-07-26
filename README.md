@@ -50,3 +50,28 @@ FinSentBot/
 ├── docker-compose.yml
 ├── .env
 └── README.md
+
+---
+
+## 🚀 Démarrage rapide
+
+1. Installez les dépendances Python :
+
+```bash
+pip install -r requirements.txt
+```
+
+2. Lancez l'infrastructure Kafka :
+
+```bash
+docker-compose up -d
+```
+
+3. Vérifiez la connexion en exécutant le script de test :
+
+```bash
+python test_send.py
+```
+
+Ce script envoie un message factice sur le topic `raw_news` afin de vérifier que
+l'installation fonctionne correctement.
