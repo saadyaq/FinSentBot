@@ -1,0 +1,11 @@
+Pourquoi une fenêtre d'observation (OBSERVATION_WINDOW_MINUTES) ?
+Lorsqu'une news est publiée, l’effet sur le marché ne se produit pas instantanément. Il faut un petit délai pour que :
+
+les investisseurs la lisent,
+
+les algorithmes de trading réagissent,
+
+le marché s’ajuste.
+
+Donc on définit une fenêtre de temps (par ex. 10 minutes) après la publication d’une news pour mesurer la variation du prix.
+
