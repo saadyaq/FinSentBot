@@ -14,7 +14,7 @@ THRESHOLD= 0.005
 
 def load_data():
     news_df=pd.read_json(NEWS_PATH,lines=True)
-    prices_df=pd.read_html(PRICES_PATH, lines=True)
+    prices_df=pd.read_json(PRICES_PATH, lines=True)
 
     #Convertir en datetime
     news_df["timestamp"]=pd.to_datetime(news_df["timestamp"])
@@ -64,10 +64,10 @@ def generate_labels(news_df,prices_df):
 
         return pd.DataFrame(data)
     
-    if __name__=="__main__":
-        news_df,prices_df=load_data()
-        train_dataset=generate_labels(news_df,prices_df)
+if __name__=="__main__":
+    news_df,prices_df=load_data()
+    train_dataset=generate_labels(news_df,prices_df)
 
-        os.makedirs("data/traininig_datasets",exist_ok=True)
-        train_dataset.to_csv("data/training_datasets/train.csv",index=False)
-        print("Dataset generated with", len(train_dataset),"samples.")
+    os.makedirs("data/traininig_datasets",exist_ok=True)
+    train_dataset.to_csv("data/training_datasets/train.csv",index=False)
+    print("Dataset generated with", len(train_dataset),"samples.")
