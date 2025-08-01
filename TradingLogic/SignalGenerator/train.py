@@ -8,7 +8,7 @@ import numpy as np
 
 #Dataset Pytorch
 
-class TradingDataset(Dataset)
+class TradingDataset(Dataset):
     def __init__(self,df):
         self.X=df[['sentiment_score','price_now','price_future','variation']].values.astype(np.float32)
         self.y=df["action"].values
@@ -54,5 +54,27 @@ def train_model(model ,dataloader,criterion, optimizer, device):
             optimizer.step()
             total_loss+=loss.item()
 
-            print(f"Epoch {epoch +1}, Loss: {total_loss:.4f}")
+        print(f"Epoch {epoch +1}, Loss: {total_loss:.4f}")
 
+def evaluate_model(model,dataloader,criterion,device):
+    model.eval()
+    total_loss=0
+    correct=0
+    total=0
+
+    with torch.no_grad():
+        for x_batch, y_batch in dataloader:
+            x_batch,y_batch=x_batch.to(device), y_batch.to(device)
+            outputs=model(x_batch)
+            loss=criterion(outputs,y_batch)
+            total_loss+=loss.item()
+
+            _,predicted=torch.max(outputs.data,1)
+            total +=y_batch.size(0)
+            correct+=(predicted==y_batch).sum().item()
+    
+    accuracy=correct/total if total>0 else 0
+    avg_loss=total_loss/len(dataloader)
+
+    print(f"Evaluation - Loss: {avg_loss:.4f}, Accuracy : {accuracy:.2%}")
+    
