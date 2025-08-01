@@ -31,8 +31,28 @@ class TradingMLP(nn.Module):
         super().__init__()
         self.net=nn.Sequential(
             nn.Linear(input_dim,hidden_dim),
-            nn.Relu(),
+            nn.ReLU(),
             nn.Linear(hidden_dim,output_dim)
         )
     def forward (self,x):
         return self.net(x)
+
+#Boucle d'entrainement
+
+def train_model(model ,dataloader,criterion, optimizer, device):
+    model.train()
+    
+    for epoch in range(10):
+        total_loss=0
+        for x_batch , y_batch in dataloader :
+            x_batch, y_batch=x_batch.to(device),y_batch.to(device)
+
+            optimizer.zero_grad()
+            outputs=model(x_batch)
+            loss=criterion(outputs, y_batch)
+            loss.backward()
+            optimizer.step()
+            total_loss+=loss.item()
+
+            print(f"Epoch {epoch +1}, Loss: {total_loss:.4f}")
+
