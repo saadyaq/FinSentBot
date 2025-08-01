@@ -77,4 +77,4 @@ def evaluate_model(model,dataloader,criterion,device):
     avg_loss=total_loss/len(dataloader)
 
     print(f"Evaluation - Loss: {avg_loss:.4f}, Accuracy : {accuracy:.2%}")
-    
+    return avg_loss, accuracy
