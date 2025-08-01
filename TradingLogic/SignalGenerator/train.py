@@ -94,7 +94,7 @@ if __name__=="__main__":
 
     # Initialiser le modèle
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = TradingMLP(input_dim=2).to(device)
+    model = TradingMLP(input_dim=4).to(device)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
@@ -103,6 +103,6 @@ if __name__=="__main__":
     train_model(model, train_loader, criterion, optimizer, device)
     evaluate_model(model,train_loader,criterion,device)
     # Sauvegarde
-    torch.save(model.state_dict(), "TradingLogic/trained_model.pth")
+    torch.save(model.state_dict(), "/home/saadyaq/SE/Python/finsentbot/TradingLogic/trained_model.pth")
     print("✅ Modèle entraîné et sauvegardé")
 
