@@ -16,7 +16,7 @@ class TradingDataset(Dataset):
         #Encoder les labels
 
         self.label_encoder=LabelEncoder()
-        self.y=self.label_encoder.fit_tranform(df["action"])
+        self.y=self.label_encoder.fit_transform(df["action"])
 
     def __len__(self):
         return len(self.X)
@@ -56,6 +56,8 @@ def train_model(model ,dataloader,criterion, optimizer, device):
 
         print(f"Epoch {epoch +1}, Loss: {total_loss:.4f}")
 
+#Evaluation du modèle
+
 def evaluate_model(model,dataloader,criterion,device):
     model.eval()
     total_loss=0
@@ -78,3 +80,29 @@ def evaluate_model(model,dataloader,criterion,device):
 
     print(f"Evaluation - Loss: {avg_loss:.4f}, Accuracy : {accuracy:.2%}")
     return avg_loss, accuracy
+
+#MAIN
+if __name__=="__main__":
+
+    df = pd.read_csv("/home/saadyaq/SE/Python/finsentbot/TradingLogic/training_datasets/saadyaq/SE/finsentbot/data/data/train.csv")
+
+    # Split train/test
+    train_df, test_df = train_test_split(df, test_size=0.2, random_state=42)
+
+    train_dataset = TradingDataset(train_df)
+    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True)
+
+    # Initialiser le modèle
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = TradingMLP(input_dim=2).to(device)
+
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+
+    # Entraînement
+    train_model(model, train_loader, criterion, optimizer, device)
+    evaluate_model(model,train_loader,criterion,device)
+    # Sauvegarde
+    torch.save(model.state_dict(), "TradingLogic/trained_model.pth")
+    print("✅ Modèle entraîné et sauvegardé")
+
