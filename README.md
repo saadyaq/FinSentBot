@@ -75,3 +75,11 @@ python test_send.py
 
 Ce script envoie un message factice sur le topic `raw_news` afin de vérifier que
 l'installation fonctionne correctement.
+
+4. Générer un dataset d'entraînement à partir des données brutes :
+
+```bash
+python TradingLogic/prepare_dataset.py
+```
+
+Le fichier `data/training_datasets/train.csv` sera créé avec les échantillons alignés par symbole.
