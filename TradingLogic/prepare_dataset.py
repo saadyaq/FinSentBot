@@ -24,9 +24,11 @@ def load_data():
     # Supprimer les news sans symbole pour éviter les associations aléatoires
     news_df = news_df.dropna(subset=["symbol"])
 
+
     # Trier pour merge_asof (timestamp puis symbole)
     news_df = news_df.sort_values(["timestamp", "symbol"]).reset_index(drop=True)
     prices_df = prices_df.sort_values(["timestamp", "symbol"]).reset_index(drop=True)
+
 
     # Associer symbol et prix au moment de la news (merge asof)
     enriched_news = pd.merge_asof(
