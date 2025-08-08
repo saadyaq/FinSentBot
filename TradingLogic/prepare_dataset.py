@@ -77,9 +77,9 @@ def generate_labels(news_df, prices_df):
         p1 = price_future.iloc[0]["price"]
         variation = (p1 - p0) / p0
 
-        if variation > THRESHOLD:
+        if variation > 0 and sentiment > 0:
             action = "BUY"
-        elif variation < -THRESHOLD:
+        elif variation < 0 and sentiment < 0:
             action = "SELL"
         else:
             action = "HOLD"
