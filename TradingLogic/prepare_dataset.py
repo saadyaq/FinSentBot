@@ -10,7 +10,8 @@ PRICES_PATH = BASE_DIR / "data" / "raw" / "stock_prices.jsonl"
 
 # Fenêtre d'observation après la news
 OBSERVATION_WINDOW_MINUTES = 2
-THRESHOLD = 0.005
+# Tolérance pour l'association prix/news
+MERGE_TOLERANCE_MINUTES = 10
 
 def load_data():
     news_df = pd.read_json(NEWS_PATH, lines=True)
@@ -23,9 +24,11 @@ def load_data():
     # Supprimer les news sans symbole pour éviter les associations aléatoires
     news_df = news_df.dropna(subset=["symbol"])
 
-    # Trier pour merge_asof (timestamp global puis symbole)
-    news_df = news_df.sort_values(["timestamp", "symbol"])
-    prices_df = prices_df.sort_values(["timestamp", "symbol"])
+
+    # Trier pour merge_asof (timestamp puis symbole)
+    news_df = news_df.sort_values(["timestamp", "symbol"]).reset_index(drop=True)
+    prices_df = prices_df.sort_values(["timestamp", "symbol"]).reset_index(drop=True)
+
 
     # Associer symbol et prix au moment de la news (merge asof)
     enriched_news = pd.merge_asof(
@@ -34,7 +37,7 @@ def load_data():
         on="timestamp",
         by="symbol",
         direction="backward",
-        tolerance=pd.Timedelta("10min")  # ← marge de tolérance temporelle
+        tolerance=pd.Timedelta(minutes=MERGE_TOLERANCE_MINUTES)  # marge de tolérance temporelle
     )
 
     if "symbol" not in enriched_news.columns or "price" not in enriched_news.columns:
