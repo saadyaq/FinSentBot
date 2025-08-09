@@ -14,38 +14,59 @@ OBSERVATION_WINDOW_MINUTES = 2
 MERGE_TOLERANCE_MINUTES = 10
 
 def load_data():
-    news_df = pd.read_json(NEWS_PATH, lines=True)
+    news_df   = pd.read_json(NEWS_PATH,   lines=True)
     prices_df = pd.read_json(PRICES_PATH, lines=True)
 
-    # Convertir en datetime
-    news_df["timestamp"] = pd.to_datetime(news_df["timestamp"]).dt.tz_localize(None)
-    prices_df["timestamp"] = pd.to_datetime(prices_df["timestamp"]).dt.tz_localize(None)
+    # Timestamps normalisés (naïfs)
+    news_df["timestamp"]   = pd.to_datetime(news_df["timestamp"], errors="coerce").dt.tz_localize(None)
+    prices_df["timestamp"] = pd.to_datetime(prices_df["timestamp"], errors="coerce").dt.tz_localize(None)
 
-    # Supprimer les news sans symbole pour éviter les associations aléatoires
-    news_df = news_df.dropna(subset=["symbol"])
+    # DROP AVANT cast -> sinon NaN devient "nan"
+    news_df   = news_df.dropna(subset=["symbol", "timestamp"])
+    prices_df = prices_df.dropna(subset=["symbol", "timestamp", "price"])
+
+    # Normalisation symboles
+    news_df["symbol"]   = news_df["symbol"].astype(str).str.upper().str.strip()
+    prices_df["symbol"] = prices_df["symbol"].astype(str).str.upper().str.strip()
+
+    # Retirer les tokens invalides
+    invalid = {"", "NAN", "NONE", "NULL"}
+    news_df = news_df[~news_df["symbol"].isin(invalid)].copy()
+
+    # On ne garde que les symboles vus dans les news
+    symbols = sorted(news_df["symbol"].unique().tolist())
+    prices_df = prices_df[prices_df["symbol"].isin(symbols)].copy()
+
+    # Merge robuste: par symbole, groupe par groupe
+    merged_parts, missing = [], []
+    for sym in symbols:
+        g_news   = news_df[news_df["symbol"] == sym].sort_values("timestamp", kind="mergesort")
+        g_prices = prices_df[prices_df["symbol"] == sym].sort_values("timestamp", kind="mergesort")
+        if g_prices.empty:
+            missing.append(sym); continue
+        m = pd.merge_asof(
+            g_news,
+            g_prices[["timestamp", "price"]],
+            on="timestamp",
+            direction="backward",
+            tolerance=pd.Timedelta("60min"),
+            allow_exact_matches=True,
+        )
+        merged_parts.append(m)
+
+    enriched_news = pd.concat(merged_parts, ignore_index=True) if merged_parts else news_df.iloc[0:0].copy()
+    before = len(enriched_news)
+    enriched_news = enriched_news.dropna(subset=["price"]).reset_index(drop=True)
+    after = len(enriched_news)
+
+    if missing:
+        print("⚠️ Symboles présents dans les news mais absents des prix:", sorted(missing)[:20],
+              f"(+{max(0, len(missing)-20)} autres)" if len(missing) > 20 else "")
+    print(f"Après merge_asof par symbole: {after}/{before} news gardées avec prix")
+
+    return enriched_news, prices_df
 
 
-    # Trier pour merge_asof (timestamp puis symbole)
-    news_df = news_df.sort_values(["timestamp", "symbol"]).reset_index(drop=True)
-    prices_df = prices_df.sort_values(["timestamp", "symbol"]).reset_index(drop=True)
-
-
-    # Associer symbol et prix au moment de la news (merge asof)
-    enriched_news = pd.merge_asof(
-        news_df,
-        prices_df[["timestamp", "symbol", "price"]],
-        on="timestamp",
-        by="symbol",
-        direction="backward",
-        tolerance=pd.Timedelta(minutes=MERGE_TOLERANCE_MINUTES)  # marge de tolérance temporelle
-    )
-
-    if "symbol" not in enriched_news.columns or "price" not in enriched_news.columns:
-        raise ValueError("⛔ Les colonnes 'symbol' ou 'price' sont absentes du fichier news.")
-
-    # Supprimer les news sans correspondance de prix
-    news_df = enriched_news.dropna(subset=["symbol", "price"])
-    return news_df, prices_df
 
 def generate_labels(news_df, prices_df):
     data = []
