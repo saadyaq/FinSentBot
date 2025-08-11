@@ -1,5 +1,8 @@
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 class SentimentModel:
 
@@ -8,25 +11,34 @@ class SentimentModel:
         """Intialise le tokenizer et le modèle"""
 
         model_name="ProsusAI/finbert"
-        print(f"Loading FinBert Model : {model_name}")
-        self.tokenizer=AutoTokenizer.from_pretrained(model_name)
-        self.model=AutoModelForSequenceClassification.from_pretrained(model_name)
-        self.model.eval()
-        self.id2label = self.model.config.id2label
+        try:
+            logger.info(f"Loading FinBERT model: {model_name}")
+            self.tokenizer=AutoTokenizer.from_pretrained(model_name)
+            self.model=AutoModelForSequenceClassification.from_pretrained(model_name)
+            self.model.eval()
+            self.id2label = self.model.config.id2label
+            logger.info("FinBERT model loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load FinBERT model: {e}")
+            raise
     
     def predict_sentiment(self,text):
         """ Prévoit le sentiment d'un texte nettoyé"""
-
-        if not text:
+        try:
+            if not text:
+                logger.warning("Empty text provided for sentiment analysis")
+                return 0.0
+            
+            inputs=self.tokenizer(
+                text,
+                return_tensors="pt",
+                truncation=True,
+                padding='max_length',
+                max_length=256
+            )
+        except Exception as e:
+            logger.error(f"Failed to tokenize text for sentiment analysis: {e}")
             return 0.0
-        
-        inputs=self.tokenizer(
-            text,
-            return_tensors="pt",
-            truncation=True,
-            padding='max_length',
-            max_length=256
-        )
 
         with torch.no_grad():
             outputs=self.model(**inputs)

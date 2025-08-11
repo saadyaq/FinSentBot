@@ -2,25 +2,108 @@ import json
 from kafka import KafkaConsumer, KafkaProducer
 import pandas as pd
 from config.kafka_config import KAFKA_CONFIG
-
+import re
 from nlp.preprocessing import clean_text
 from nlp.sentiment_model import SentimentModel
+from utils.logger import setup_logger
 
-def get_sp500_symbols():
-    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-    df = pd.read_html(url)[0]
-    return df['Symbol'].tolist()
+logger = setup_logger(__name__)
 
-def detect_symbol(text, symbols_list):
-    text = text.upper()
-    for symbol in symbols_list:
-        if symbol in text:
+def get_symbol_map() -> dict:
+    """
+    Construit un dictionnaire qui associe différents alias (ticker, nom complet,
+    variantes sans suffixes) à leur ticker officiel du S&P 500. On récupère la
+    liste des entreprises sur Wikipédia et on ajoute quelques alias manuels
+    supplémentaires (Google, Facebook, Tesla, etc.) pour améliorer la détection.
+    """
+    try:
+        logger.info("Building symbol map from S&P 500 companies")
+        url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+        df = pd.read_html(url)[0]
+    except Exception as e:
+        logger.error(f"Failed to fetch S&P 500 data for symbol mapping: {e}")
+        return {}
+
+    symbol_map: dict[str, str] = {}
+    # Regex pour supprimer les suffixes courants (INC., CORP., CO., etc.)
+    suffix_re = re.compile(
+        r"\b(?:INCORPORATED|INC\.?|CORPORATION|CORP\.?|COMPANY|CO\.?|LP|L\.P\.|HOLDING(S)?|GROUP)\b"
+    )
+
+    for _, row in df.iterrows():
+        symbol = str(row["Symbol"]).upper().strip()
+        company = str(row["Security"]).upper().strip()
+        # On mappe toujours le ticker vers lui‑même
+        symbol_map[symbol] = symbol
+        # On supprime le texte entre parenthèses (« Alphabet Inc. (Class A) » → « Alphabet Inc. »)
+        base = re.sub(r"\s*\(.*?\)", "", company).strip()
+        # On génère plusieurs variantes : nom complet, nom sans parenthèses…
+        candidates = {company, base}
+        # On retire les suffixes communs
+        simplified = suffix_re.sub("", base).strip()
+        if simplified:
+            candidates.add(simplified)
+        # On enlève toute ponctuation et espaces superflus
+        candidates = {re.sub(r"[^A-Z0-9 ]", "", c).strip() for c in candidates}
+        # Chaque variante est associée au ticker
+        for name in candidates:
+            if name and name not in symbol_map:
+                symbol_map[name] = symbol
+
+    # Aliases manuels pour les marques populaires
+    manual_aliases = {
+        "GOOGLE": "GOOGL",
+        "FACEBOOK": "META",
+        "META": "META",
+        "TESLA": "TSLA",
+        "NETFLIX": "NFLX",
+        "AMAZON": "AMZN",
+        "APPLE": "AAPL",
+        "MICROSOFT": "MSFT",
+        "NVIDIA": "NVDA",
+        "ALPHABET": "GOOGL",
+        "GOOG": "GOOG",
+        "GOOGL": "GOOGL",
+        "META PLATFORMS": "META",
+        "WALMART": "WMT",
+        "UNITEDHEALTH": "UNH",
+    }
+    for alias, sym in manual_aliases.items():
+        symbol_map[alias] = sym
+    return symbol_map
+
+def detect_symbol(text: str, symbol_map: dict) -> str | None:
+    """
+    Détecte le ticker le plus probable à partir du texte d’un article.
+    La recherche s’effectue sur l’ensemble des alias connus via des
+    correspondances mot‑entier. Les noms les plus longs sont testés en premier
+    pour réduire les faux positifs (par exemple, éviter que le ticker « A »
+    corresponde à n’importe quel mot). Les tickers d’un seul caractère sont
+    uniquement repérés s’ils sont précédés d’un signe $ ou placés entre
+    parenthèses.
+    """
+    if not text:
+        return None
+    text_upper = text.upper()
+    # On trie les clés par longueur décroissante
+    for name in sorted(symbol_map.keys(), key=len, reverse=True):
+        symbol = symbol_map[name]
+        if not name or len(name) <= 1:
+            continue
+        pattern = rf"\b{re.escape(name)}\b"
+        if re.search(pattern, text_upper):
             return symbol
+    # Cas particulier pour les tickers d’un seul caractère (F, T, C…)
+    for name in sorted(symbol_map.keys(), key=len, reverse=True):
+        if len(name) == 1:
+            symbol = symbol_map[name]
+            if re.search(rf"(\$|\()\s*{re.escape(name)}\s*(\)|\b)", text_upper):
+                return symbol
     return None
 
 def main():
     # Charger dynamiquement les symboles S&P500
-    SYMBOLS = get_sp500_symbols()
+    SYMBOLS = get_symbol_map()
 
     consumer = KafkaConsumer(
         KAFKA_CONFIG["topics"]["raw_news"],
@@ -48,7 +131,7 @@ def main():
             score = model.predict_sentiment(cleaned_content)
 
             # Détection automatique du symbole
-            symbol = detect_symbol(article["content"], SYMBOLS)
+            symbol = detect_symbol(article.get("content",""), SYMBOLS)
 
             if not symbol:
                 print("⛔ Aucun symbole détecté dans l’article, article ignoré.")

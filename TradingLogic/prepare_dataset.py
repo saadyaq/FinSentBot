@@ -66,7 +66,7 @@ def load_data():
 
     return enriched_news, prices_df
 
-
+1
 
 def generate_labels(news_df, prices_df):
     data = []
