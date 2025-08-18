@@ -14,9 +14,9 @@ OBSERVATION_WINDOW_MINUTES = 3  # Ajusté selon les données disponibles
 MERGE_TOLERANCE_MINUTES = 10
 
 # Seuils pour les actions (en pourcentage) - ajustés pour 3 min
-BUY_THRESHOLD = 0.005   # +0.5% ou plus
-SELL_THRESHOLD = -0.005  # -0.5% ou moins
-# Entre -0.5% et +0.5% = HOLD
+BUY_THRESHOLD = 0.002   # +0.2% ou plus
+SELL_THRESHOLD = -0.002  # -0.2% ou moins
+# Entre -0.2% et +0.2% = HOLD
 
 def load_data():
     news_df   = pd.read_json(NEWS_PATH,   lines=True)
@@ -71,8 +71,6 @@ def load_data():
 
     return enriched_news, prices_df
 
-1
-
 def generate_labels(news_df, prices_df):
     data = []
     for _, row in news_df.iterrows():
@@ -81,54 +79,39 @@ def generate_labels(news_df, prices_df):
         sentiment = row.get("sentiment_score", 0)
         text = row["content"]
 
-        # Prix courant au moment de l'info
-        price_now = prices_df[
-            (prices_df["symbol"] == symbol) &
-            (prices_df["timestamp"] <= timestamp)
-        ].sort_values("timestamp").tail(1)
+        # Utiliser le prix déjà mergé dans news_df
+        if pd.isna(row.get("price")):
+            print(f"⛔ Aucun prix courant pour {symbol} à {timestamp}")
+            continue
 
-        # Prix après 10 minutes
+        p0 = row["price"]  # Prix au moment de la news (déjà mergé)
+
+        # Prix après la fenêtre d'observation
         price_future = prices_df[
             (prices_df["symbol"] == symbol) &
             (prices_df["timestamp"] > timestamp + timedelta(minutes=OBSERVATION_WINDOW_MINUTES))
         ].sort_values("timestamp").head(1)
 
-        if price_now.empty :
-            print(f"⛔ Aucun prix courant pour {symbol} à {timestamp}")
-            continue
         if price_future.empty:
             print(f"⛔ Aucun prix futur pour {symbol} à {timestamp + timedelta(minutes=OBSERVATION_WINDOW_MINUTES)}")
             continue
 
-        p0 = price_now.iloc[0]["price"]
         p1 = price_future.iloc[0]["price"]
         variation = (p1 - p0) / p0
 
-        # Logique d'attribution améliorée
+        # Logique d'attribution simplifiée et équilibrée
         if variation >= BUY_THRESHOLD:
-            # Variation significative positive
-            if sentiment > 0.1:  # Sentiment clairement positif
-                action = "BUY"
-            elif sentiment > -0.1:  # Sentiment neutre/légèrement positif
-                action = "BUY"  # Suivre la tendance du marché
-            else:  # Sentiment très négatif
-                action = "HOLD"  # Prudence: prix monte mais sentiment négatif
+            action = "BUY"
         elif variation <= SELL_THRESHOLD:
-            # Variation significative négative  
-            if sentiment < -0.1:  # Sentiment clairement négatif
-                action = "SELL"
-            elif sentiment < 0.1:  # Sentiment neutre/légèrement négatif
-                action = "SELL"  # Suivre la tendance du marché
-            else:  # Sentiment très positif
-                action = "HOLD"  # Prudence: prix baisse mais sentiment positif
+            action = "SELL"
         else:
-            # Variation faible (-2% < variation < +2%)
-            if sentiment > 0.3:  # Sentiment très positif
-                action = "BUY"  # Miser sur le sentiment
-            elif sentiment < -0.3:  # Sentiment très négatif
-                action = "SELL"  # Miser sur le sentiment
+            # Variation faible: utiliser le sentiment
+            if sentiment > 0.1:  # Sentiment positif
+                action = "BUY"
+            elif sentiment < -0.1:  # Sentiment négatif
+                action = "SELL"
             else:
-                action = "HOLD"  # Pas de signal clair
+                action = "HOLD"  # Sentiment neutre
 
         data.append({
             "symbol": symbol,
@@ -145,9 +128,44 @@ def generate_labels(news_df, prices_df):
 
 if __name__ == "__main__":
     news_df, prices_df = load_data()
-    train_dataset = generate_labels(news_df, prices_df)
+    new_dataset = generate_labels(news_df, prices_df)
 
     output_dir = BASE_DIR / "data" / "training_datasets"
     output_dir.mkdir(parents=True, exist_ok=True)
-    train_dataset.to_csv(output_dir / "train.csv", index=False)
-    print("✅ Dataset generated with", len(train_dataset), "samples.")
+    output_file = output_dir / "train.csv"
+    
+    # Charger le dataset existant s'il existe
+    if output_file.exists():
+        try:
+            existing_dataset = pd.read_csv(output_file)
+            print(f"📊 Dataset existant: {len(existing_dataset)} échantillons")
+            
+            # Éviter les doublons en utilisant symbol+text comme clé unique
+            new_dataset['key'] = new_dataset['symbol'] + '|' + new_dataset['text'].str[:100]
+            existing_dataset['key'] = existing_dataset['symbol'] + '|' + existing_dataset['text'].str[:100]
+            
+            # Filtrer les nouveaux échantillons uniquement
+            mask = ~new_dataset['key'].isin(existing_dataset['key'])
+            truly_new = new_dataset[mask].drop('key', axis=1)
+            
+            if len(truly_new) > 0:
+                # Combiner les datasets
+                combined_dataset = pd.concat([existing_dataset.drop('key', axis=1), truly_new], ignore_index=True)
+                print(f"➕ {len(truly_new)} nouveaux échantillons ajoutés")
+            else:
+                combined_dataset = existing_dataset.drop('key', axis=1)
+                print("ℹ️ Aucun nouvel échantillon à ajouter")
+        except Exception as e:
+            print(f"⚠️ Erreur lors du chargement du dataset existant: {e}")
+            combined_dataset = new_dataset
+    else:
+        combined_dataset = new_dataset
+        print("📝 Création d'un nouveau dataset")
+    
+    # Sauvegarder le dataset combiné
+    combined_dataset.to_csv(output_file, index=False)
+    
+    # Statistiques finales
+    action_counts = combined_dataset['action'].value_counts()
+    print(f"✅ Dataset final: {len(combined_dataset)} échantillons")
+    print(f"📈 Répartition: {dict(action_counts)}")
