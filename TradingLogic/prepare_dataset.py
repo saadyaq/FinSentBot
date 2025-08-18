@@ -9,9 +9,14 @@ NEWS_PATH = BASE_DIR / "data" / "raw" / "news_sentiment.jsonl"
 PRICES_PATH = BASE_DIR / "data" / "raw" / "stock_prices.jsonl"
 
 # Fenêtre d'observation après la news
-OBSERVATION_WINDOW_MINUTES = 2
+OBSERVATION_WINDOW_MINUTES = 3  # Ajusté selon les données disponibles
 # Tolérance pour l'association prix/news
 MERGE_TOLERANCE_MINUTES = 10
+
+# Seuils pour les actions (en pourcentage) - ajustés pour 3 min
+BUY_THRESHOLD = 0.005   # +0.5% ou plus
+SELL_THRESHOLD = -0.005  # -0.5% ou moins
+# Entre -0.5% et +0.5% = HOLD
 
 def load_data():
     news_df   = pd.read_json(NEWS_PATH,   lines=True)
@@ -99,12 +104,31 @@ def generate_labels(news_df, prices_df):
         p1 = price_future.iloc[0]["price"]
         variation = (p1 - p0) / p0
 
-        if variation > 0 and sentiment > 0:
-            action = "BUY"
-        elif variation < 0 and sentiment < 0:
-            action = "SELL"
+        # Logique d'attribution améliorée
+        if variation >= BUY_THRESHOLD:
+            # Variation significative positive
+            if sentiment > 0.1:  # Sentiment clairement positif
+                action = "BUY"
+            elif sentiment > -0.1:  # Sentiment neutre/légèrement positif
+                action = "BUY"  # Suivre la tendance du marché
+            else:  # Sentiment très négatif
+                action = "HOLD"  # Prudence: prix monte mais sentiment négatif
+        elif variation <= SELL_THRESHOLD:
+            # Variation significative négative  
+            if sentiment < -0.1:  # Sentiment clairement négatif
+                action = "SELL"
+            elif sentiment < 0.1:  # Sentiment neutre/légèrement négatif
+                action = "SELL"  # Suivre la tendance du marché
+            else:  # Sentiment très positif
+                action = "HOLD"  # Prudence: prix baisse mais sentiment positif
         else:
-            action = "HOLD"
+            # Variation faible (-2% < variation < +2%)
+            if sentiment > 0.3:  # Sentiment très positif
+                action = "BUY"  # Miser sur le sentiment
+            elif sentiment < -0.3:  # Sentiment très négatif
+                action = "SELL"  # Miser sur le sentiment
+            else:
+                action = "HOLD"  # Pas de signal clair
 
         data.append({
             "symbol": symbol,
