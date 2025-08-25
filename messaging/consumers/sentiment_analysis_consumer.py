@@ -85,20 +85,31 @@ def detect_symbol(text: str, symbol_map: dict) -> str | None:
     if not text:
         return None
     text_upper = text.upper()
-    # On trie les clés par longueur décroissante
+    
+    # D'abord, chercher les noms longs (4+ caractères) - plus fiables
     for name in sorted(symbol_map.keys(), key=len, reverse=True):
-        symbol = symbol_map[name]
-        if not name or len(name) <= 1:
-            continue
-        pattern = rf"\b{re.escape(name)}\b"
-        if re.search(pattern, text_upper):
-            return symbol
-    # Cas particulier pour les tickers d’un seul caractère (F, T, C…)
+        if len(name) >= 4:
+            symbol = symbol_map[name]
+            pattern = rf"\b{re.escape(name)}\b"
+            if re.search(pattern, text_upper):
+                return symbol
+    
+    # Ensuite, chercher les tickers de 2-3 caractères avec contexte
+    for name in sorted(symbol_map.keys(), key=len, reverse=True):
+        if 2 <= len(name) <= 3:
+            symbol = symbol_map[name]
+            # Chercher avec $ ou () ou après des mots clés financiers
+            ticker_pattern = rf"(\$|NYSE:|NASDAQ:|TICKER:|STOCK:|SHARES OF|\()\s*{re.escape(name)}\s*(\)|$|\s)"
+            if re.search(ticker_pattern, text_upper):
+                return symbol
+    
+    # Enfin, tickers d'un seul caractère uniquement avec $ ou ()
     for name in sorted(symbol_map.keys(), key=len, reverse=True):
         if len(name) == 1:
             symbol = symbol_map[name]
             if re.search(rf"(\$|\()\s*{re.escape(name)}\s*(\)|\b)", text_upper):
                 return symbol
+    
     return None
 
 def main():
