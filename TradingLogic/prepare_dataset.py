@@ -9,14 +9,14 @@ NEWS_PATH = BASE_DIR / "data" / "raw" / "news_sentiment.jsonl"
 PRICES_PATH = BASE_DIR / "data" / "raw" / "stock_prices.jsonl"
 
 # Fenêtre d'observation après la news
-OBSERVATION_WINDOW_MINUTES = 3  # Ajusté selon les données disponibles
+OBSERVATION_WINDOW_MINUTES = 10  # Élargie pour trouver plus de prix futurs
 # Tolérance pour l'association prix/news
 MERGE_TOLERANCE_MINUTES = 10
 
-# Seuils pour les actions (en pourcentage) - ajustés pour 3 min
-BUY_THRESHOLD = 0.002   # +0.2% ou plus
-SELL_THRESHOLD = -0.002  # -0.2% ou moins
-# Entre -0.2% et +0.2% = HOLD
+# Seuils pour les actions (en pourcentage) - ajustés pour 10 min
+BUY_THRESHOLD = 0.005   # +0.5% ou plus
+SELL_THRESHOLD = -0.005  # -0.5% ou moins
+# Entre -0.5% et +0.5% = HOLD
 
 def load_data():
     news_df   = pd.read_json(NEWS_PATH,   lines=True)
@@ -73,7 +73,10 @@ def load_data():
 
 def generate_labels(news_df, prices_df):
     data = []
-    for _, row in news_df.iterrows():
+    # Déduplication : grouper par symbole+timestamp, garder la première occurrence
+    news_df_dedup = news_df.drop_duplicates(subset=['symbol', 'timestamp'], keep='first')
+    
+    for _, row in news_df_dedup.iterrows():
         timestamp = row["timestamp"]
         symbol = row["symbol"]
         sentiment = row.get("sentiment_score", 0)
@@ -89,7 +92,7 @@ def generate_labels(news_df, prices_df):
         # Prix après la fenêtre d'observation
         price_future = prices_df[
             (prices_df["symbol"] == symbol) &
-            (prices_df["timestamp"] > timestamp + timedelta(minutes=OBSERVATION_WINDOW_MINUTES))
+            (prices_df["timestamp"] >= timestamp + timedelta(minutes=OBSERVATION_WINDOW_MINUTES))
         ].sort_values("timestamp").head(1)
 
         if price_future.empty:
