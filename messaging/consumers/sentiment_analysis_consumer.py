@@ -1,6 +1,7 @@
 import json
 from kafka import KafkaConsumer, KafkaProducer
 import pandas as pd
+import requests
 from config.kafka_config import KAFKA_CONFIG
 import re
 from nlp.preprocessing import clean_text
@@ -19,7 +20,10 @@ def get_symbol_map() -> dict:
     try:
         logger.info("Building symbol map from S&P 500 companies")
         url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-        df = pd.read_html(url)[0]
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        df = pd.read_html(response.text)[0]
     except Exception as e:
         logger.error(f"Failed to fetch S&P 500 data for symbol mapping: {e}")
         return {}

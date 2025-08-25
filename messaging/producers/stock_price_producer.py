@@ -31,8 +31,17 @@ TOLERATE_EMPTY_HISTORY = False   # si True, on ignore les symboles sans historiq
 def get_sp500_symbols() -> List[str]:
     try:
         logger.info("Fetching S&P 500 symbols from Wikipedia")
+        import requests
+        
         url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-        df = pd.read_html(url)[0]
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        
+        df = pd.read_html(response.content)[0]
         syms = df["Symbol"].astype(str).str.upper().str.strip().tolist()
         # yfinance préfère des tickers sans espaces
         symbols = [s.replace(".", "-") for s in syms]
@@ -40,7 +49,16 @@ def get_sp500_symbols() -> List[str]:
         return symbols
     except Exception as e:
         logger.error(f"Failed to fetch S&P 500 symbols: {e}")
-        return []
+        # Fallback: some popular S&P 500 symbols
+        logger.info("Using fallback list of popular S&P 500 symbols")
+        fallback_symbols = [
+            'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'META', 'BRK-B', 'UNH', 'JNJ',
+            'V', 'WMT', 'JPM', 'XOM', 'PG', 'MA', 'CVX', 'HD', 'ABBV', 'BAC',
+            'PFE', 'KO', 'AVGO', 'PEP', 'TMO', 'COST', 'DIS', 'ABT', 'MRK', 'CSCO',
+            'ACN', 'LIN', 'VZ', 'ADBE', 'WFC', 'CRM', 'AMD', 'DHR', 'NKE', 'TXN',
+            'NEE', 'BMY', 'QCOM', 'RTX', 'PM', 'HON', 'LOW', 'UPS', 'ORCL', 'T'
+        ]
+        return fallback_symbols
 
 def load_seen_symbols() -> Set[str]:
     try:
@@ -152,16 +170,13 @@ def fetch_and_send_prices():
                     tickers = yf.Tickers(" ".join(group))
                     for sym in group:
                         try:
-                            yf_t = tickers.tickers.get(sym)
-                            if yf_t is None:
-                                print(f"⚠️ yfinance: unknown ticker {sym}")
-                                continue
+                            ticker = yf.Ticker(sym)
 
                             # Essai 1: 1d/1m
-                            data = yf_t.history(period="1d", interval="1m")
+                            data = ticker.history(period="1d", interval="1m")
                             if data.empty:
                                 # Essai 2: 5d/5m
-                                data = yf_t.history(period="5d", interval="5m")
+                                data = ticker.history(period="5d", interval="5m")
 
                             if data.empty:
                                 if not TOLERATE_EMPTY_HISTORY:
