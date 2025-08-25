@@ -1,11 +1,58 @@
-Pourquoi une fenêtre d'observation (OBSERVATION_WINDOW_MINUTES) ?
-Lorsqu'une news est publiée, l’effet sur le marché ne se produit pas instantanément. Il faut un petit délai pour que :
+# FinSentBot - Notes du Projet
+!!!! Demander l'explication du window_observation
+## Statut Actuel (25/08/2025)
 
-les investisseurs la lisent,
+### ✅ FAIT - Infrastructure de base
+- Architecture Kafka complète (producers/consumers)
+- Pipeline de données news → sentiment → prix → signaux
+- Collecte de données: 18K prix + news sentiment
+- Dashboard de monitoring
+- Modèle PyTorch pour classification (BUY/SELL/HOLD)
 
-les algorithmes de trading réagissent,
+### ✅ FAIT RÉCEMMENT - Corrections dataset
+- Fix duplications symboles (drop_duplicates sur symbol+timestamp) 
+- Fix variations nulles (fenêtre 3min → 10min, >= au lieu de >)
+- Ajustement seuils: ±0.2% → ±0.5% pour plus de réalisme
+- Dataset actuel: 36 échantillons après nettoyage
 
-le marché s’ajuste.
+### 🔄 EN COURS - Problèmes identifiés
+- Dataset très petit (36 échantillons seulement)
+- Déséquilibre classes: 23 SELL, 10 HOLD, 3 BUY
+- Qualité données: variations parfois nulles malgré corrections
+- Besoin plus de données historiques
 
-Donc on définit une fenêtre de temps (par ex. 10 minutes) après la publication d’une news pour mesurer la variation du prix.
+### 📋 À FAIRE - Priorités
+1. **Augmentation données**:
+   - Collecter plus de news historiques
+   - Étendre période de collecte prix
+   - Diversifier sources (Yahoo, Alpha Vantage)
+
+2. **Amélioration modèle**:
+   - Techniques d'augmentation de données
+   - Équilibrage classes (SMOTE, sous-échantillonnage)
+   - Validation croisée temporelle
+
+3. **Pipeline production**:
+   - Tests automatisés
+   - Déploiement continu
+   - Monitoring métriques
+
+### 📊 Métriques actuelles
+- News collectées: 109 (44 avec prix matchés)
+- Prix d'actions: 18,036 points
+- Dataset final: 36 échantillons
+- Fenêtre observation: 10 minutes
+- Seuils trading: ±0.5%
+
+---
+
+## Context Technique
+
+### Pourquoi une fenêtre d'observation (OBSERVATION_WINDOW_MINUTES) ?
+Lorsqu'une news est publiée, l'effet sur le marché ne se produit pas instantanément. Il faut un petit délai pour que :
+- les investisseurs la lisent,
+- les algorithmes de trading réagissent,
+- le marché s'ajuste.
+
+Donc on définit une fenêtre de temps (par ex. 10 minutes) après la publication d'une news pour mesurer la variation du prix.
 
