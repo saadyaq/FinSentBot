@@ -66,8 +66,8 @@ def main():
         scrape_and_send("Financial Times", fetch_ft_article_links, extract_ft)
         scrape_and_send("TechCrunch", fetch_tc_article_links, extract_tc)
         
-        print("\n✅ Scraping round complete. Sleeping for 30 minutes...\n")
-        time.sleep(1800)  # toutes les 30 minutes
+        print("\n✅ Scraping round complete. Sleeping for 20 minutes...\n")
+        time.sleep(1200)  # toutes les 30 minutes
 
 if __name__ == "__main__":
     main()
