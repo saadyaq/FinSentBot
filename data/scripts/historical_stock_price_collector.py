@@ -86,6 +86,100 @@ class HistoricalStockCollector:
                 'SPY', 'QQQ', 'IWM', 'VTI', 'VOO', 'ARKK', 'XLF', 'XLK', 'XLE', 'XLV'
             ]
             return fallback[:max_symbols]
+    
+    def collect_symbol_historical_data(self,symbol:str,periods:List[str]=None,intervals :List[str]=None) ->List[Dict]:
+
+        """Collecte les données historiques pour un symbole donné"""
+        if periods is None:
+            periods=Historical_periods
+        if intervals is None:
+            intervals=Intervals
+        
+        symbol_data=[]
+
+        for period in periods:
+            for interval in intervals:
+                try:
+                    ticker=yf.Ticker(symbol)
+                    max_retries=3
+                    for attempt in range(max_retries):
+                        try:
+                            data=ticker.history(period=period,interval=interval)
+                            break
+                        except Exception as retry_e:
+                            if attempt==max_retries -1:
+                                raise retry_e
+                    
+                    if not data.empty:
+                        for timestamp, row in data.iterrows():
+                            if pd.isna(row["Close"]) or row["Close"] <= 0:
+                                continue 
+                            record  ={
+                                "symbol": symbol,
+                                "timestamp": timestamp.isoformat(),
+                                "price" : round(float(row['Close']),4),
+                                "open": round(float(row["Open"]), 4),
+                                "high": round(float(row["High"]), 4), 
+                                "low": round(float(row["Low"]), 4),
+                                "volume": int(row["Volume"]) if not pd.isna(row["Volume"]) else 0,
+                                "period": period,
+                                "interval": interval,
+                                "collection_date": datetime.now().isoformat()
+                            }
+                            symbol_data.append(record)
+
+
+                    time.sleep(0.1)
+                except Exception as e:
+                    logger.warning(f"Error collecting {symbol}--{period}--{interval}: {e}")
+                    continue
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 if __name__ == "__main__":
     collector = HistoricalStockCollector()
