@@ -134,6 +134,29 @@ class HistoricalStockCollector:
                     logger.warning(f"Error collecting {symbol}--{period}--{interval}: {e}")
                     continue
 
+        logger.info(f"✅ {symbol}: {len(symbol_data)} records collected")
+        return symbol_data
+    
+
+    def collect_parallel_batch(self,symbols_batch: List[str]) -> List[Dict]:
+        """ Collecte en parallèle pour un lot de symbol"""
+
+        batch_data=[]
+        with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+            future_to_symbol={
+                executor.submit(self.collect_symbol_historical_data,symbol): symbol
+                for symbol in symbols_batch
+            }
+
+            for future in as_completed(future_to_symbol):
+                symbol=future_to_symbol[future]
+                try:
+                    symbol_data = future.result(timeout=120)  # Timeout 2 min par symbole
+                    batch_data.extend(symbol_data)
+                except Exception as e:
+                    logger.error(f"Failed to collect {symbol}: {e}")
+        
+        return batch_data
 
 
 
