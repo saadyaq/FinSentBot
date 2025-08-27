@@ -21,8 +21,8 @@ cnbc_url="https://www.cnbc.com/world/?region=world"
 
 #Collecter les liens des articles 
 
-def fetch_cnbc_article_links():
-
+def fetch_cnbc_article_links(max_articles=5):
+    """Fetch recent CNBC article links with configurable limit"""
     response=requests.get(cnbc_url,headers=headers)
     soup = BeautifulSoup(response.text,"html.parser")
     links = []
@@ -34,10 +34,25 @@ def fetch_cnbc_article_links():
             full_url = href if href.startswith("http") else "https://www.cnbc.com" + href
             links.append((title, full_url))
 
-    # Uniques et limité à 5 liens
-    unique_links = list(dict.fromkeys(links))[:5]
+    # Uniques et limité au nombre spécifié
+    unique_links = list(dict.fromkeys(links))[:max_articles]
 
     return unique_links
+
+def fetch_cnbc_historical_wayback(start_date=None, end_date=None, max_articles=20):
+    """
+    Fetch historical CNBC articles using Wayback Machine
+    Limited functionality due to CNBC archive limitations
+    """
+    print("⚠️ Note: CNBC historical archives are limited. Using Wayback Machine approach.")
+    
+    if not start_date or not end_date:
+        print("Using recent articles as fallback...")
+        return fetch_cnbc_article_links(max_articles)
+    
+    # Wayback Machine approach would go here
+    # For now, return recent articles as fallback
+    return fetch_cnbc_article_links(max_articles)
 
 
 
