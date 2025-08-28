@@ -158,6 +158,50 @@ class HistoricalStockCollector:
         
         return batch_data
 
+    def run_massive_collection(self,save_frequency:int=5) -> pd.DataFrame:
+        """
+        Lance la collecte massive avec sauvegarde fréquente
+        Args :
+            save_frequency: Sauvegarder tous les N Batches 
+        """
+
+        logger.info(" Starting Massive Historical Stock price collection")
+        logger.info(f"{len(self.sp500_symbols)} symbols * {len(Historical_periods)} * {len(Intervals)} intervals")
+        logger.info(f"Estimated records : {len(self.sp500_symbols)* len(Historical_periods)*len(Intervals)*100:,}+")
+
+        all_data=[]
+
+        def chunked(lst,n):
+            for i in range(0,len(lst),n):
+                yield lst[i:i+1]
+        
+        batch_num=0
+        total_batches=len(List(chunked(self.sp500_symbols,batch_size)))
+
+        for symbols_batch in chunked(self.sp500_symbols,batch_size):
+            batch_num +=1
+            logger.info(f"Processing batch {batch_num}/{total_batches}: {symbols_batch}")
+
+            batch_data=self.collect_parallel_batch(symbols_batch)
+            all_data.extend(batch_data)
+
+            logger.info(f"Batch {batch_num} completed: {len(batch_data)}records")
+            logger.info(f" Total collected so far: {len(all_data):,} records")
+
+            if batch_num%save_frequency==0:
+                self._save_intermediate(all_data, f"batch_{{batch_num}}")
+                logger.info(f"Intermediate save complemented")
+
+            time.sleep(sleep_between_batches)
+        
+        df=pd.DataFrame(all_data)
+        self._save_final_dataset(df)
+        self._generate_collection_report(df)
+        return df
+
+
+
+
 
 
 

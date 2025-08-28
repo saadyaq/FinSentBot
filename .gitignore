@@ -3,6 +3,9 @@ notes.txt
 
 # Data files
 data/
+!data/scripts/
+
+
 *.jsonl
 *.csv
 
