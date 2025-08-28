@@ -214,13 +214,15 @@ class HistoricalStockCollector:
 
         """ Sauvegarde du dataset final"""
         jsonl_file=DATA_DIR/"historical_stock_prices.jsonl"
-        df.to_json(jsonl_file,orient='records'lines=True)
+        df.to_json(jsonl_file,orient='records',lines=True)
 
         csv_file=csv_file=DATA_DIR/"historical_stock_prices.csv"
         df.to_csv(csv_file,index=False)
         logger.info(f"💾 Final dataset saved:")
         logger.info(f"📄 JSONL: {jsonl_file}")
         logger.info(f"📊 CSV: {csv_file}")
+    
+    
 
 
 
