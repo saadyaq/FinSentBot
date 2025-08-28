@@ -200,9 +200,27 @@ class HistoricalStockCollector:
         return df
 
 
+    def _save_intermediate(self,data: List[Dict], suffix:str):
+        """ Sauvegarde intermédiaire"""
 
+        filename=f"historical_prices_intermediate_{suffix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        filepath=DATA_DIR/filename
+        with open(filepath,'w') as f:
+            json.dump(data,f)
+        
+        logger.info(f"Intermediate save: {len(data)} records -> {filepath}")
+    
+    def _save_final_dataset(self, df:pd.DataFrame):
 
+        """ Sauvegarde du dataset final"""
+        jsonl_file=DATA_DIR/"historical_stock_prices.jsonl"
+        df.to_json(jsonl_file,orient='records'lines=True)
 
+        csv_file=csv_file=DATA_DIR/"historical_stock_prices.csv"
+        df.to_csv(csv_file,index=False)
+        logger.info(f"💾 Final dataset saved:")
+        logger.info(f"📄 JSONL: {jsonl_file}")
+        logger.info(f"📊 CSV: {csv_file}")
 
 
 
