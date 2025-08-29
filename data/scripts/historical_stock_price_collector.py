@@ -222,7 +222,44 @@ class HistoricalStockCollector:
         logger.info(f"📄 JSONL: {jsonl_file}")
         logger.info(f"📊 CSV: {csv_file}")
     
-    
+    def _generate_collection_report(self,df:pd.DataFrame): 
+        """ Génère un rapport détaillé de la collecte"""
+
+        report ={
+            "collection_metadata":{
+                "collection_data":datetime.now().isoformat(),
+                "total_records": len(df),
+                "unique_symbols":df["symbol"].unique(),
+                "periods_covered": sorted(df['period'].unique().tolist()),
+                "intervals_covered": sorted(df['interval'].unique().tolist()),
+                "data_range":{
+                    "earliest":df['timestamp'].min() if not df.empty else None,
+                    "latest": df['timestamp'].max() if not df.empty else None
+
+                }
+
+            },
+            "data_quality":{
+                "records_per_symbol": df.groupby('symbol').size().describe().to_dict(),
+                "records_per_period":df['period'].value_counts().to_dict(),
+                "records_per_interval":df['interval'].value_counts().to_dict(),
+                "price_range":{
+                    "min":float(df["price"].min()) if not df.empty else 0,
+                    "max": float(df["price"].max()) if not df.empty else 0,
+                    "mean": float(df['price'].mean()) if not df.empty else 0
+                }
+
+            },
+            "collection_performance":{
+                "symbols_requested": len(self.sp500_symbols),
+                "symbols_with_data":df['symbol'].nunique(),
+                "success_rate": df['symbol'].nunique()/len(self.sp500_symbols)
+            }
+
+            
+        }
+
+        
 
 
 
