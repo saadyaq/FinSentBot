@@ -278,8 +278,33 @@ class HistoricalStockCollector:
         print(f"📁 Report saved to: {report_file}")
 
 
+    def get_symbols_from_existing_news(self) -> List[str]:
 
+        """Récupère les symboles déjà présents pour focuser sur ceux-la"""
 
+        news_file=DATA_DIR/"news_sentiments.jsonl"
+        if not news_file.exists():
+            logger.warning(f"News file not found:{news_file}")
+
+        symbols=set()
+        try:
+
+            with open(news_file,'r') as f :
+                for line in f :
+                    try:
+                        data=json.loads(line)
+                        if 'symbol' in data and data['symbol']:
+                            symbols.add(data['symbol'].upper().strip())
+                    except:
+                        continue
+            
+            symbols_list=list(symbols)
+            logger.info(logger.info(f"Found {len(symbols_list)} unique symbols in existing news"))
+            return symbols_list
+
+        except Exception as e:
+            logger.error(f"Error loading news file:{e}")
+            return []
 
 
 
