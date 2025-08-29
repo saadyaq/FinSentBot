@@ -306,7 +306,44 @@ class HistoricalStockCollector:
             logger.error(f"Error loading news file:{e}")
             return []
 
+    def run_focused_collection(self):
+        """ Lance une collecte focalisée sur les symboles des news existantes"""
 
+        # Récupérer les symboles de tes news
+        news_symbols = self.get_symbols_from_existing_news()
+        
+        if news_symbols:
+            logger.info(f"🎯 FOCUSED collection on {len(news_symbols)} symbols from existing news")
+            self.sp500_symbols = news_symbols[:50]  # Limiter pour commencer
+        else:
+            logger.info("📈 Using S&P 500 symbols (no existing news found)")
+        
+        # Lancer la collecte
+        return self.run_massive_collection()
+
+
+if __name__ == "__main__":
+    collector = HistoricalStockCollector()
+    
+    print("Choose collection mode:")
+    print("1. Focused collection (symbols from your existing news)")
+    print("2. Full S&P 500 collection") 
+    print("3. Custom symbol list")
+    
+    choice = input("Enter choice (1-3): ").strip()
+    
+    if choice == "1":
+        collector.run_focused_collection()
+    elif choice == "2":
+        collector.run_massive_collection()
+    elif choice == "3":
+        custom_symbols = input("Enter symbols separated by commas: ").strip().upper().split(',')
+        custom_symbols = [s.strip() for s in custom_symbols if s.strip()]
+        collector.sp500_symbols = custom_symbols
+        collector.run_massive_collection()
+    else:
+        print("Invalid choice, running focused collection...")
+        collector.run_focused_collection()
 
 
 
