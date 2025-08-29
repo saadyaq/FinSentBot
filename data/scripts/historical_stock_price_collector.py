@@ -253,13 +253,30 @@ class HistoricalStockCollector:
             "collection_performance":{
                 "symbols_requested": len(self.sp500_symbols),
                 "symbols_with_data":df['symbol'].nunique(),
-                "success_rate": df['symbol'].nunique()/len(self.sp500_symbols)
+                "success_rate": df['symbol'].nunique()/len(self.sp500_symbols),
+                "avg_records_per_symbol": len(df)/ max(df['symbol'].nunique())
             }
 
             
         }
+        report_file=DATA_DIR/ f"historical_data_collection_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        with open(report_file,'w') as f:
+            json.dump(report,f)
 
-        
+        # Affichage console
+        print("\n" + "="*70)
+        print("📊 HISTORICAL STOCK PRICE COLLECTION REPORT")
+        print("="*70)
+        print(f"🎯 Total Records: {report['collection_metadata']['total_records']:,}")
+        print(f"🏢 Unique Symbols: {report['collection_metadata']['unique_symbols']}")
+        print(f"📅 Periods: {', '.join(report['collection_metadata']['periods_covered'])}")
+        print(f"⏱️  Intervals: {', '.join(report['collection_metadata']['intervals_covered'])}")
+        print(f"💰 Price Range: ${report['data_quality']['price_range']['min']:.2f} - ${report['data_quality']['price_range']['max']:.2f}")
+        print(f"✅ Success Rate: {report['collection_performance']['success_rate']:.1f}%")
+        print(f"📈 Avg Records/Symbol: {report['collection_performance']['avg_records_per_symbol']:.0f}")
+        print("="*70)
+        print(f"📁 Report saved to: {report_file}")
+
 
 
 
