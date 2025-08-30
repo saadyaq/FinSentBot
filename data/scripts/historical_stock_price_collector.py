@@ -173,10 +173,10 @@ class HistoricalStockCollector:
 
         def chunked(lst,n):
             for i in range(0,len(lst),n):
-                yield lst[i:i+1]
+                yield lst[i:i+n]
         
         batch_num=0
-        total_batches=len(List(chunked(self.sp500_symbols,batch_size)))
+        total_batches=len(list(chunked(self.sp500_symbols,batch_size)))
 
         for symbols_batch in chunked(self.sp500_symbols,batch_size):
             batch_num +=1
@@ -189,7 +189,7 @@ class HistoricalStockCollector:
             logger.info(f" Total collected so far: {len(all_data):,} records")
 
             if batch_num%save_frequency==0:
-                self._save_intermediate(all_data, f"batch_{{batch_num}}")
+                self._save_intermediate(all_data, f"batch_{batch_num}")
                 logger.info(f"Intermediate save complemented")
 
             time.sleep(sleep_between_batches)
@@ -216,7 +216,7 @@ class HistoricalStockCollector:
         jsonl_file=DATA_DIR/"historical_stock_prices.jsonl"
         df.to_json(jsonl_file,orient='records',lines=True)
 
-        csv_file=csv_file=DATA_DIR/"historical_stock_prices.csv"
+        csv_file=DATA_DIR/"historical_stock_prices.csv"
         df.to_csv(csv_file,index=False)
         logger.info(f"💾 Final dataset saved:")
         logger.info(f"📄 JSONL: {jsonl_file}")
@@ -299,7 +299,7 @@ class HistoricalStockCollector:
                         continue
             
             symbols_list=list(symbols)
-            logger.info(logger.info(f"Found {len(symbols_list)} unique symbols in existing news"))
+            logger.info(f"Found {len(symbols_list)} unique symbols in existing news")
             return symbols_list
 
         except Exception as e:
@@ -377,16 +377,4 @@ if __name__ == "__main__":
 
 
 
-
-
-
-
-
-
-
-if __name__ == "__main__":
-    collector = HistoricalStockCollector()
-    sp500=collector._get_extended_symbols()
-    print("Choose collection mode:")
-    print("1. Focused collection (symbols from your existing news)")
-    print("2. Full S&P 500 collection")   
+   
