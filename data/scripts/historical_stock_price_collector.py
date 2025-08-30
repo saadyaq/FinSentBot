@@ -2,13 +2,12 @@ import json
 import time 
 import pandas as pd # type: ignore
 import yfinance as yf
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 import requests
-from typing import List, Dict, Optional
+from typing import List, Dict
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
 
 #Configuration 
 BASE_DIR= Path(__file__).resolve().parent.parent
@@ -18,11 +17,20 @@ DATA_DIR.mkdir(parents=True,exist_ok=True)
 #Paramètres d'expansion historiques
 
 Historical_periods=['1mo','3mo','6mo','1y']
-Intervals=['1m','5m','30m','1h']
+# Smart interval selection based on Yahoo Finance limitations
+Intervals_by_period = {
+    '1mo': ['1h'],  # Only hourly for 1 month (avoid 1m/5m/15m limits)
+    '3mo': ['1h'],  # Only hourly for 3 months  
+    '6mo': ['1h'],  # Only hourly for 6 months
+    '1y': ['1d'],   # Daily for 1 year (most reliable)
+    '2y': ['1d'],   # Daily for longer periods
+    '5y': ['1d']
+}
 max_symbols= 100
-batch_size=20
-parallel_workers=5
-sleep_between_batches=2.0
+batch_size=10  # Reduced for better rate limiting
+parallel_workers=3  # Reduced to avoid overwhelming API
+sleep_between_batches=3.0  # Increased delay
+sleep_between_requests=0.2  # Added delay between individual requests
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger=logging.getLogger(__name__)
@@ -32,6 +40,15 @@ class HistoricalStockCollector:
     def __init__(self):
         self.sp500_symbols=self._get_extended_symbols()
         self.collected_data=[]
+        # Collection statistics
+        self.stats = {
+            'total_requests': 0,
+            'successful_requests': 0,
+            'failed_requests': 0,
+            'symbols_with_data': set(),
+            'symbols_without_data': set(),
+            'total_records': 0
+        }
     
     def _get_extended_symbols(self) -> List[str]:
         """Récupère une liste étendue de symboles S&P 500"""
@@ -87,19 +104,23 @@ class HistoricalStockCollector:
             ]
             return fallback[:max_symbols]
     
-    def collect_symbol_historical_data(self,symbol:str,periods:List[str]=None,intervals :List[str]=None) ->List[Dict]:
+    def collect_symbol_historical_data(self,symbol:str,periods:List[str]=None,custom_intervals:List[str]=None) ->List[Dict]:
 
-        """Collecte les données historiques pour un symbole donné"""
+        """Collecte les données historiques pour un symbole donné avec gestion intelligente des intervalles"""
         if periods is None:
             periods=Historical_periods
-        if intervals is None:
-            intervals=Intervals
         
         symbol_data=[]
+        success_count = 0
+        error_count = 0
 
         for period in periods:
-            for interval in intervals:
+            # Use smart interval selection or custom intervals
+            intervals_to_use = custom_intervals if custom_intervals else Intervals_by_period.get(period, ['1h'])
+            
+            for interval in intervals_to_use:
                 try:
+                    self.stats['total_requests'] += 1
                     ticker=yf.Ticker(symbol)
                     max_retries=3
                     for attempt in range(max_retries):
@@ -109,8 +130,11 @@ class HistoricalStockCollector:
                         except Exception as retry_e:
                             if attempt==max_retries -1:
                                 raise retry_e
+                            # Progressive backoff for retries
+                            time.sleep((attempt + 1) * 0.5)
                     
                     if not data.empty:
+                        records_added = 0
                         for timestamp, row in data.iterrows():
                             if pd.isna(row["Close"]) or row["Close"] <= 0:
                                 continue 
@@ -127,16 +151,49 @@ class HistoricalStockCollector:
                                 "collection_date": datetime.now().isoformat()
                             }
                             symbol_data.append(record)
+                            records_added += 1
+                        
+                        success_count += 1
+                        self.stats['successful_requests'] += 1
+                        self.stats['symbols_with_data'].add(symbol)
+                        self.stats['total_records'] += records_added
+                        
+                        if records_added > 0:
+                            logger.debug(f"✅ {symbol} {period}/{interval}: {records_added} records")
+                    else:
+                        logger.debug(f"⚠️ {symbol} {period}/{interval}: No data returned")
 
-
-                    time.sleep(0.1)
+                    # Rate limiting between requests
+                    time.sleep(sleep_between_requests)
                 except Exception as e:
-                    logger.warning(f"Error collecting {symbol}--{period}--{interval}: {e}")
+                    error_count += 1
+                    self.stats['failed_requests'] += 1
+                    self.stats['symbols_without_data'].add(symbol)
+                    logger.warning(f"❌ {symbol} {period}/{interval}: {str(e)[:100]}...")
                     continue
 
-        logger.info(f"✅ {symbol}: {len(symbol_data)} records collected")
+        # Log success/error ratio
+        total_attempts = success_count + error_count
+        success_rate = (success_count / total_attempts * 100) if total_attempts > 0 else 0
+        
+        if len(symbol_data) > 0:
+            logger.info(f"✅ {symbol}: {len(symbol_data)} records collected (Success: {success_count}/{total_attempts}, {success_rate:.1f}%)")
+        else:
+            logger.warning(f"⚠️ {symbol}: No data collected (Errors: {error_count}/{total_attempts})")
+        
         return symbol_data
     
+    def print_collection_stats(self):
+        """Affiche les statistiques de collecte en temps réel"""
+        if self.stats['total_requests'] == 0:
+            return
+            
+        success_rate = (self.stats['successful_requests'] / self.stats['total_requests'] * 100)
+        symbols_with_data_count = len(self.stats['symbols_with_data'])
+        symbols_without_data_count = len(self.stats['symbols_without_data'])
+        
+        logger.info(f"📊 Collection Stats: {self.stats['successful_requests']}/{self.stats['total_requests']} requests successful ({success_rate:.1f}%)")
+        logger.info(f"📈 Records: {self.stats['total_records']:,} | Symbols with data: {symbols_with_data_count} | Without data: {symbols_without_data_count}")
 
     def collect_parallel_batch(self,symbols_batch: List[str]) -> List[Dict]:
         """ Collecte en parallèle pour un lot de symbol"""
@@ -165,9 +222,9 @@ class HistoricalStockCollector:
             save_frequency: Sauvegarder tous les N Batches 
         """
 
-        logger.info(" Starting Massive Historical Stock price collection")
-        logger.info(f"{len(self.sp500_symbols)} symbols * {len(Historical_periods)} * {len(Intervals)} intervals")
-        logger.info(f"Estimated records : {len(self.sp500_symbols)* len(Historical_periods)*len(Intervals)*100:,}+")
+        logger.info("🚀 Starting Massive Historical Stock price collection")
+        logger.info(f"📊 {len(self.sp500_symbols)} symbols * {len(Historical_periods)} periods")
+        logger.info(f"🎯 Using smart interval selection based on Yahoo Finance limitations")
 
         all_data=[]
 
@@ -185,12 +242,15 @@ class HistoricalStockCollector:
             batch_data=self.collect_parallel_batch(symbols_batch)
             all_data.extend(batch_data)
 
-            logger.info(f"Batch {batch_num} completed: {len(batch_data)}records")
+            logger.info(f"Batch {batch_num} completed: {len(batch_data)} records")
             logger.info(f" Total collected so far: {len(all_data):,} records")
+            
+            # Show collection statistics after each batch
+            self.print_collection_stats()
 
             if batch_num%save_frequency==0:
                 self._save_intermediate(all_data, f"batch_{batch_num}")
-                logger.info(f"Intermediate save complemented")
+                logger.info(f"Intermediate save completed")
 
             time.sleep(sleep_between_batches)
         
@@ -254,7 +314,13 @@ class HistoricalStockCollector:
                 "symbols_requested": len(self.sp500_symbols),
                 "symbols_with_data":df['symbol'].nunique(),
                 "success_rate": df['symbol'].nunique()/len(self.sp500_symbols),
-                "avg_records_per_symbol": len(df)/ max(df['symbol'].nunique())
+                "avg_records_per_symbol": len(df)/ max(df['symbol'].nunique(), 1),
+                "api_stats": {
+                    "total_requests": self.stats['total_requests'],
+                    "successful_requests": self.stats['successful_requests'],
+                    "failed_requests": self.stats['failed_requests'],
+                    "api_success_rate": (self.stats['successful_requests'] / max(self.stats['total_requests'], 1) * 100)
+                }
             }
 
             
@@ -272,38 +338,49 @@ class HistoricalStockCollector:
         print(f"📅 Periods: {', '.join(report['collection_metadata']['periods_covered'])}")
         print(f"⏱️  Intervals: {', '.join(report['collection_metadata']['intervals_covered'])}")
         print(f"💰 Price Range: ${report['data_quality']['price_range']['min']:.2f} - ${report['data_quality']['price_range']['max']:.2f}")
-        print(f"✅ Success Rate: {report['collection_performance']['success_rate']:.1f}%")
+        print(f"✅ Symbol Success Rate: {report['collection_performance']['success_rate']:.1%}")
+        print(f"🔗 API Success Rate: {report['collection_performance']['api_stats']['api_success_rate']:.1f}%")
         print(f"📈 Avg Records/Symbol: {report['collection_performance']['avg_records_per_symbol']:.0f}")
+        print(f"📊 API Requests: {report['collection_performance']['api_stats']['total_requests']} ({report['collection_performance']['api_stats']['successful_requests']} successful)")
         print("="*70)
         print(f"📁 Report saved to: {report_file}")
 
 
     def get_symbols_from_existing_news(self) -> List[str]:
-
         """Récupère les symboles déjà présents pour focuser sur ceux-la"""
-
-        news_file=DATA_DIR/"news_sentiments.jsonl"
+        news_file = DATA_DIR / "news_sentiments.jsonl"
+        
         if not news_file.exists():
-            logger.warning(f"News file not found:{news_file}")
+            logger.info(f"📰 News file not found: {news_file}")
+            logger.info("🔄 Will use S&P 500 symbols instead")
+            return []
 
-        symbols=set()
+        symbols = set()
         try:
-
-            with open(news_file,'r') as f :
-                for line in f :
+            lines_processed = 0
+            with open(news_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    lines_processed += 1
                     try:
-                        data=json.loads(line)
+                        data = json.loads(line.strip())
                         if 'symbol' in data and data['symbol']:
                             symbols.add(data['symbol'].upper().strip())
-                    except:
+                    except json.JSONDecodeError:
+                        continue
+                    except Exception:
                         continue
             
-            symbols_list=list(symbols)
-            logger.info(f"Found {len(symbols_list)} unique symbols in existing news")
+            symbols_list = list(symbols)
+            logger.info(f"📊 Processed {lines_processed} news entries")
+            logger.info(f"🎯 Found {len(symbols_list)} unique symbols in existing news")
             return symbols_list
 
+        except FileNotFoundError:
+            logger.info(f"📰 News file not accessible: {news_file}")
+            return []
         except Exception as e:
-            logger.error(f"Error loading news file:{e}")
+            logger.warning(f"⚠️ Error reading news file: {str(e)[:100]}...")
+            logger.info("🔄 Will use S&P 500 symbols instead")
             return []
 
     def run_focused_collection(self):
