@@ -15,3 +15,10 @@ BUY_THRESHOLD=0.005
 SELL_THRESHOLD=-0.005
 
 class HistoricalPriceIntegrator:
+    def __init__(self):
+        self.news_df=None
+        self.historical_prices_df=None
+        self.current_prices_df=None
+    
+    def load_data(self):
+        ""
