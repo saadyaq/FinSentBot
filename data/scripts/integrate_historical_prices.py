@@ -50,3 +50,33 @@ class HistoricalPriceIntegrator:
         
         return self._combine_price_data()
     
+    def _combine_price_data(self):
+        """ Combine les prix historiques + prix actuels"""
+
+        prices_df=[]
+        if self.historical_prices_df is not None:
+            hist_prices=self.historical_prices_df[["symbol","timestamp","price"]].copy()
+            hist_prices['source']="historical"
+            prices_df.append(hist_prices)
+        
+        if self.current_prices_df is not None:
+            current_prices=self.current_prices_df[['symbol','timestamp','price']].copy()
+            current_prices['source']='current'
+            prices_df.append(current_prices)
+        
+        if not prices_df:
+            print("No price data available")
+            return False
+
+        self.all_prices_df=pd.concat(prices_df,ignore_index=True)
+        self.all_prices_df['timestamp']=pd.to_datetime(self.all_prices_df['timestamp'], errors="coerce").dz.tz_localize(None)
+
+        self.all_prices_df=self.all_prices_df.dropna(subset=['symbol','timestamp','price'])
+        self.all_prices_df['symbol']=self.all_prices_df['symbol'].astype(str).str.upper().str.strip()
+        self.all_prices_df=self.all_prices_df.sort_values("timestamp").drop_duplicates(subset=['symbol', 'timestamp'],kepp='last')
+        print(f"✅ Combined price dataset: {len(self.all_prices_df):,} records")
+        print(f"📊 Symbols available: {self.all_prices_df['symbol'].nunique()}")
+        print(f"📅 Date range: {self.all_prices_df['timestamp'].min()} to {self.all_prices_df['timestamp'].max()}")
+        
+        return True
+        
