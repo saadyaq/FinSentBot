@@ -348,7 +348,7 @@ class HistoricalStockCollector:
 
     def get_symbols_from_existing_news(self) -> List[str]:
         """Récupère les symboles déjà présents pour focuser sur ceux-la"""
-        news_file = DATA_DIR / "news_sentiments.jsonl"
+        news_file = DATA_DIR / "news_sentiment.jsonl"
         
         if not news_file.exists():
             logger.info(f"📰 News file not found: {news_file}")
