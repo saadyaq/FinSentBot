@@ -16,7 +16,7 @@ DATA_DIR.mkdir(parents=True,exist_ok=True)
 
 #Paramètres d'expansion historiques
 
-Historical_periods=['1mo','3mo','6mo','1y']
+Historical_periods=['1mo','3mo','6mo','1y','2y']
 # Smart interval selection based on Yahoo Finance limitations
 Intervals_by_period = {
     '1mo': ['1h'],  # Only hourly for 1 month (avoid 1m/5m/15m limits)
@@ -26,7 +26,7 @@ Intervals_by_period = {
     '2y': ['1d'],   # Daily for longer periods
     '5y': ['1d']
 }
-max_symbols= 100
+max_symbols= 500
 batch_size=10  # Reduced for better rate limiting
 parallel_workers=3  # Reduced to avoid overwhelming API
 sleep_between_batches=3.0  # Increased delay
@@ -293,14 +293,14 @@ class HistoricalStockCollector:
                 "periods_covered": sorted(df['period'].unique().tolist()),
                 "intervals_covered": sorted(df['interval'].unique().tolist()),
                 "data_range":{
-                    "earliest":df['timestamp'].min() if not df.empty else None,
-                    "latest": df['timestamp'].max() if not df.empty else None
+                    "earliest":str(df['timestamp'].min()) if not df.empty else None,
+                    "latest": str(df['timestamp'].max()) if not df.empty else None
 
                 }
 
             },
             "data_quality":{
-                "records_per_symbol": df.groupby('symbol').size().describe().to_dict(),
+                "records_per_symbol": {k: float(v) for k, v in df.groupby('symbol').size().describe().to_dict().items()},
                 "records_per_period":df['period'].value_counts().to_dict(),
                 "records_per_interval":df['interval'].value_counts().to_dict(),
                 "price_range":{

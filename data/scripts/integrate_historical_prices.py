@@ -69,7 +69,7 @@ class HistoricalPriceIntegrator:
             return False
 
         self.all_prices_df=pd.concat(prices_df,ignore_index=True)
-        self.all_prices_df['timestamp']=pd.to_datetime(self.all_prices_df['timestamp'], errors="coerce").dt.tz_localize(None)
+        self.all_prices_df['timestamp']=pd.to_datetime(self.all_prices_df['timestamp'], errors="coerce", utc=True).dt.tz_localize(None)
 
         self.all_prices_df=self.all_prices_df.dropna(subset=['symbol','timestamp','price'])
         self.all_prices_df['symbol']=self.all_prices_df['symbol'].astype(str).str.upper().str.strip()
@@ -85,7 +85,7 @@ class HistoricalPriceIntegrator:
 
         """Génère les échantillons avec beaucoup plus de donnée prix"""
 
-        self.news_df['timestamp']=pd.to_datetime(self.news_df['timestamp'], errors="coerce").dt.tz_localize(None)
+        self.news_df['timestamp']=pd.to_datetime(self.news_df['timestamp'], errors="coerce", utc=True).dt.tz_localize(None)
         self.news_df=self.news_df.dropna(subset=['symbol','timestamp'])
         self.news_df['symbol']=self.news_df['symbol'].astype(str).str.upper().str.strip()
 
