@@ -320,4 +320,59 @@ class HistoricalPriceIntegrator:
         print("="*70)
         print(f"📁 Report saved to: {report_file}")
 
+def main():
+    """Fonction principale"""
+    print("🔗 Historical Price Integration for FinSentBot")
+    print("="*50)
+    
+    integrator = HistoricalPriceIntegrator()
+    
+    # Vérifier les fichiers disponibles
+    print("🔍 Checking available data files...")
+    
+    raw_dir = Path(__file__).resolve().parent.parent / "raw"
+    files_status = {
+        "news_sentiment.jsonl": (raw_dir / "news_sentiment.jsonl").exists(),
+        "historical_stock_prices.jsonl": (raw_dir / "historical_stock_prices.jsonl").exists(), 
+        "stock_prices.jsonl": (raw_dir / "stock_prices.jsonl").exists()
+    }
+    
+    for filename, exists in files_status.items():
+        status = "✅" if exists else "❌"
+        print(f"{status} {filename}")
+    
+    if not files_status["news_sentiment.jsonl"]:
+        print("\n❌ Critical: news_sentiment.jsonl not found!")
+        print("   Make sure your news pipeline has run and generated sentiment scores.")
+        return
+    
+    if not files_status["historical_stock_prices.jsonl"]:
+        print("\n⚠️ Warning: historical_stock_prices.jsonl not found!")
+        print("   Run the historical stock collector first:")
+        print("   python historical_stock_collector.py")
+        
+        choice = input("\nContinue with only current prices? (y/n): ").lower().strip()
+        if choice != 'y':
+            print("Exiting. Run historical collection first.")
+            return
+    
+    # Lancer l'intégration
+    print("\n🚀 Starting integration...")
+    final_dataset = integrator.run_integration()
+    
+    if final_dataset is not None and not final_dataset.empty:
+        print(f"\n🎉 SUCCESS! Your dataset has been expanded!")
+        print(f"📊 From ~36 samples → {len(final_dataset):,} samples")
+        
+        # Suggestion pour la suite
+        print(f"\n📝 Next steps:")
+        print(f"1. Review the enhanced dataset: data/training_datasets/train_enhanced_with_historical.csv")
+        print(f"2. Train your model with the expanded dataset:")
+        print(f"   python TradingLogic/SignalGenerator/train.py")
+        print(f"3. Compare performance before/after expansion")
+    else:
+        print("\n❌ Integration failed or no new samples generated.")
 
+
+if __name__ == "__main__":
+    main()
