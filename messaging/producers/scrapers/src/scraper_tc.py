@@ -29,7 +29,7 @@ def fetch_tc_article_links():
         if href.startswith("https://techcrunch.com/") and len(title) > 30 and "202" in href:
             links.append((title, href))
 
-    unique_links = list(dict.fromkeys(links))[:5]
+    unique_links = list(dict.fromkeys(links))[:50]
     print(f"[✓] {len(unique_links)} liens extraits depuis TechCrunch.")
     return unique_links
 

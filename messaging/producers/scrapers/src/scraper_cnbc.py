@@ -21,7 +21,7 @@ cnbc_url="https://www.cnbc.com/world/?region=world"
 
 #Collecter les liens des articles 
 
-def fetch_cnbc_article_links(max_articles=5):
+def fetch_cnbc_article_links(max_articles=50):
     """Fetch recent CNBC article links with configurable limit"""
     response=requests.get(cnbc_url,headers=headers)
     soup = BeautifulSoup(response.text,"html.parser")

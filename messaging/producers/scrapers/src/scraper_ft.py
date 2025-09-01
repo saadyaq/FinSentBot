@@ -28,7 +28,7 @@ def fetch_ft_article_links():
             full_url = "https://www.ft.com" + str(href)
             links.append((title, full_url))
 
-    unique_links = list(dict.fromkeys(links))[:5]
+    unique_links = list(dict.fromkeys(links))[:50]
     return unique_links
 
 # Étape 2 : extraire le contenu d’un article

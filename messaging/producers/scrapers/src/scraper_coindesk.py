@@ -34,7 +34,7 @@ def fetch_coindesk_links():
             full_url = "https://www.coindesk.com" + href
             links.append((title, full_url))
 
-    unique_links = list(dict.fromkeys(links))[:5]
+    unique_links = list(dict.fromkeys(links))[:50]
     return unique_links
 
 # --- Étape 2 : Extraire le contenu d’un article ---
