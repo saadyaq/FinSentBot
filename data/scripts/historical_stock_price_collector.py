@@ -289,7 +289,7 @@ class HistoricalStockCollector:
             "collection_metadata":{
                 "collection_data":datetime.now().isoformat(),
                 "total_records": len(df),
-                "unique_symbols":df["symbol"].unique(),
+                "unique_symbols":df["symbol"].unique().tolist(),
                 "periods_covered": sorted(df['period'].unique().tolist()),
                 "intervals_covered": sorted(df['interval'].unique().tolist()),
                 "data_range":{

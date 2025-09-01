@@ -37,14 +37,14 @@ class HistoricalPriceIntegrator:
         historical_prices_file=RAW_DIR/"historical_stock_prices.jsonl"
         if historical_prices_file.exists():
             self.historical_prices_df=pd.read_json(historical_prices_file,lines=True)
-            print(f"Loaded{len(self.historical_prices_df)} historical price records")
+            print(f"Loaded {len(self.historical_prices_df)} historical price records")
         else: 
             print("File not found run hisotrical stock price before")
         
         current_prices_file= RAW_DIR/"stock_prices.jsonl"
         if current_prices_file.exists():
             self.current_prices_df=pd.read_json(current_prices_file,lines=True)
-            print(f"Loaded{len(self.current_prices_df)} current price records")
+            print(f"Loaded {len(self.current_prices_df)} current price records")
         else:
             print("No current prices file found ")
         
@@ -69,11 +69,11 @@ class HistoricalPriceIntegrator:
             return False
 
         self.all_prices_df=pd.concat(prices_df,ignore_index=True)
-        self.all_prices_df['timestamp']=pd.to_datetime(self.all_prices_df['timestamp'], errors="coerce").dz.tz_localize(None)
+        self.all_prices_df['timestamp']=pd.to_datetime(self.all_prices_df['timestamp'], errors="coerce").dt.tz_localize(None)
 
         self.all_prices_df=self.all_prices_df.dropna(subset=['symbol','timestamp','price'])
         self.all_prices_df['symbol']=self.all_prices_df['symbol'].astype(str).str.upper().str.strip()
-        self.all_prices_df=self.all_prices_df.sort_values("timestamp").drop_duplicates(subset=['symbol', 'timestamp'],kepp='last')
+        self.all_prices_df=self.all_prices_df.sort_values("timestamp").drop_duplicates(subset=['symbol', 'timestamp'],keep='last')
         print(f"✅ Combined price dataset: {len(self.all_prices_df):,} records")
         print(f"📊 Symbols available: {self.all_prices_df['symbol'].nunique()}")
         print(f"📅 Date range: {self.all_prices_df['timestamp'].min()} to {self.all_prices_df['timestamp'].max()}")
@@ -164,7 +164,7 @@ class HistoricalPriceIntegrator:
                         "price_timestamp": price_timestamp.isoformat()
                     })
                     
-                    successful_matches += 1
+                    successful_matches = len(training_samples)
                     
                 except Exception as e:
                     print(f"⚠️ Error processing sample for {symbol}: {e}")
