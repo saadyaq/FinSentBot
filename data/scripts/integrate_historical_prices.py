@@ -79,4 +79,14 @@ class HistoricalPriceIntegrator:
         print(f"📅 Date range: {self.all_prices_df['timestamp'].min()} to {self.all_prices_df['timestamp'].max()}")
         
         return True
+    
+    
+    def generate_expanded_training_samples(self) :
+
+        """Génère les échantrillons avec beaucoup plus de donnée prix"""
+
+        self.news_df['timestamp']=pd.to_datetime(self.news_df['timestamp'], errors="coerce").dt.tz_localize(None)
+        self.news_df=self.news_df.dropna(subset=['symbol','timestamp'])
+        self.news_df['symbol']=self.news_df['symbol'].astype(str).str.upper().str.strip()
+
         
