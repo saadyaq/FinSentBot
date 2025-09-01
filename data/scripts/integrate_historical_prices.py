@@ -173,3 +173,151 @@ class HistoricalPriceIntegrator:
         print(f"✅ Generated {len(training_samples)} training samples ({successful_matches} successful matches)")
         
         return pd.DataFrame(training_samples)
+    def merge_with_existing_dataset(self, new_samples_df):
+        """Fusionne avec le dataset existant"""
+        existing_file = Training_dir / "train.csv"
+        
+        if existing_file.exists():
+            existing_df = pd.read_csv(existing_file)
+            print(f"📊 Existing dataset: {len(existing_df)} samples")
+            
+            # Éviter les doublons basés sur symbole + contenu
+            if 'text' in new_samples_df.columns and 'text' in existing_df.columns:
+                new_samples_df['content_key'] = (
+                    new_samples_df['symbol'] + '|' + new_samples_df['text'].str[:100]
+                )
+                existing_df['content_key'] = (
+                    existing_df['symbol'] + '|' + existing_df['text'].str[:100] 
+                )
+                
+                mask = ~new_samples_df['content_key'].isin(existing_df['content_key'])
+                truly_new = new_samples_df[mask].drop('content_key', axis=1)
+                
+                if len(truly_new) > 0:
+                    combined_df = pd.concat([
+                        existing_df.drop('content_key', axis=1), 
+                        truly_new
+                    ], ignore_index=True)
+                    print(f"➕ Added {len(truly_new)} new samples")
+                else:
+                    combined_df = existing_df.drop('content_key', axis=1)
+                    print("ℹ️ No new unique samples to add")
+            else:
+                # Si pas de colonne text, juste combiner
+                combined_df = pd.concat([existing_df, new_samples_df], ignore_index=True)
+                print(f"➕ Added {len(new_samples_df)} new samples (no dedup check)")
+        else:
+            combined_df = new_samples_df
+            print("📝 Creating new dataset file")
+        
+        return combined_df
+    
+    def run_integration(self):
+        """Lance l'intégration complète"""
+        print("🚀 HISTORICAL PRICE INTEGRATION PIPELINE")
+        print("="*60)
+        
+        # 1. Charger toutes les données
+        if not self.load_data():
+            print("❌ Failed to load data")
+            return
+        
+        # 2. Générer les échantillons avec plus de prix
+        expanded_samples_df = self.generate_expanded_training_samples()
+        
+        if expanded_samples_df.empty:
+            print("❌ No training samples generated")
+            return
+        
+        # 3. Afficher les statistiques
+        print("\n📊 EXPANDED DATASET STATISTICS")
+        print("-" * 40)
+        action_counts = expanded_samples_df['action'].value_counts()
+        print(f"Total samples: {len(expanded_samples_df)}")
+        for action, count in action_counts.items():
+            percentage = (count / len(expanded_samples_df)) * 100
+            print(f"{action}: {count} ({percentage:.1f}%)")
+        
+        # 4. Fusionner avec dataset existant
+        final_dataset = self.merge_with_existing_dataset(expanded_samples_df)
+        
+        # 5. Sauvegarder
+        output_file = Training_dir / "train.csv"
+        final_dataset.to_csv(output_file, index=False)
+        
+        # Sauvegarder aussi une version avec metadata
+        enhanced_file = Training_dir / "train_enhanced_with_historical.csv"
+        expanded_samples_df.to_csv(enhanced_file, index=False)
+        
+        # 6. Rapport final
+        self._generate_integration_report(final_dataset, expanded_samples_df)
+        
+        print(f"\n✅ Integration complete!")
+        print(f"📁 Final dataset: {output_file}")
+        print(f"📁 Enhanced dataset: {enhanced_file}")
+        
+        return final_dataset
+    
+    def _generate_integration_report(self, final_dataset, new_samples):
+        """Génère un rapport d'intégration"""
+        
+        report = {
+            "integration_date": datetime.now().isoformat(),
+            "data_sources": {
+                "news_articles": len(self.news_df) if self.news_df is not None else 0,
+                "historical_price_records": len(self.historical_prices_df) if self.historical_prices_df is not None else 0,
+                "current_price_records": len(self.current_prices_df) if self.current_prices_df is not None else 0,
+                "combined_price_records": len(self.all_prices_df)
+            },
+            "dataset_expansion": {
+                "new_samples_generated": len(new_samples),
+                "final_dataset_size": len(final_dataset),
+                "symbols_in_final": final_dataset['symbol'].nunique(),
+                "new_action_distribution": new_samples['action'].value_counts().to_dict(),
+                "final_action_distribution": final_dataset['action'].value_counts().to_dict()
+            },
+            "data_quality": {
+                "price_coverage": {
+                    "symbols_with_news": self.news_df['symbol'].nunique() if self.news_df is not None else 0,
+                    "symbols_with_prices": self.all_prices_df['symbol'].nunique(),
+                    "symbols_matched": new_samples['symbol'].nunique() if not new_samples.empty else 0
+                },
+                "time_coverage": {
+                    "earliest_news": self.news_df['timestamp'].min().isoformat() if self.news_df is not None and not self.news_df.empty else None,
+                    "latest_news": self.news_df['timestamp'].max().isoformat() if self.news_df is not None and not self.news_df.empty else None,
+                    "earliest_price": self.all_prices_df['timestamp'].min().isoformat() if not self.all_prices_df.empty else None,
+                    "latest_price": self.all_prices_df['timestamp'].max().isoformat() if not self.all_prices_df.empty else None
+                }
+            }
+        }
+        
+        # Sauvegarder le rapport
+        report_file = Training_dir / f"integration_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        with open(report_file, 'w') as f:
+            json.dump(report, f, indent=2)
+        
+        # Affichage console
+        print("\n" + "="*70)
+        print("📊 HISTORICAL PRICE INTEGRATION REPORT")
+        print("="*70)
+        print(f"📰 News Articles Processed: {report['data_sources']['news_articles']:,}")
+        print(f"📈 Historical Price Records: {report['data_sources']['historical_price_records']:,}")
+        print(f"📊 Combined Price Records: {report['data_sources']['combined_price_records']:,}")
+        print(f"🎯 New Training Samples: {report['dataset_expansion']['new_samples_generated']:,}")
+        print(f"📋 Final Dataset Size: {report['dataset_expansion']['final_dataset_size']:,}")
+        print(f"🏢 Symbols Matched: {report['data_quality']['price_coverage']['symbols_matched']}")
+        
+        print(f"\n📊 NEW SAMPLES ACTION DISTRIBUTION:")
+        for action, count in report['dataset_expansion']['new_action_distribution'].items():
+            percentage = (count / report['dataset_expansion']['new_samples_generated']) * 100 if report['dataset_expansion']['new_samples_generated'] > 0 else 0
+            print(f"   {action}: {count:,} ({percentage:.1f}%)")
+        
+        print(f"\n📊 FINAL DATASET ACTION DISTRIBUTION:")
+        for action, count in report['dataset_expansion']['final_action_distribution'].items():
+            percentage = (count / report['dataset_expansion']['final_dataset_size']) * 100 if report['dataset_expansion']['final_dataset_size'] > 0 else 0
+            print(f"   {action}: {count:,} ({percentage:.1f}%)")
+        
+        print("="*70)
+        print(f"📁 Report saved to: {report_file}")
+
+
