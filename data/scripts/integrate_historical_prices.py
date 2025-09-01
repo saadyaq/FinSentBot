@@ -83,10 +83,93 @@ class HistoricalPriceIntegrator:
     
     def generate_expanded_training_samples(self) :
 
-        """Génère les échantrillons avec beaucoup plus de donnée prix"""
+        """Génère les échantillons avec beaucoup plus de donnée prix"""
 
         self.news_df['timestamp']=pd.to_datetime(self.news_df['timestamp'], errors="coerce").dt.tz_localize(None)
         self.news_df=self.news_df.dropna(subset=['symbol','timestamp'])
         self.news_df['symbol']=self.news_df['symbol'].astype(str).str.upper().str.strip()
 
+        self.news_df=self.news_df.drop_duplicates(subset=['symbol','timestamp'],keep='first')
+        print(f"Processing {len(self.news_df)} unique news articles")
+
+        training_samples=[]
+        successful_matches=[]
+
+        symbols_with_news=self.news_df['symbol'].unique()
+        print(f" Symbols with news: {len(symbols_with_news)}")
+
+        for symbol in symbols_with_news:
+            symbol_news=self.news_df[self.news_df['symbol']==symbol].sort_values('timestamp')
+            symbol_prices=self.all_prices_df[self.all_prices_df['symbol']==symbol].sort_values('timestamp')
+
+            if symbol_prices.empty:
+                print(f"No prices for {symbol}")
+                continue
+            
+            print(f"Processing {symbol}: {len(symbol_news)} news × {len(symbol_prices)} prices")
+
+            for _,news_row in symbol_news.iterrows():
+                try:
+
+                    news_timestamp=news_row["timestamp"]
+                    prices_before = symbol_prices[symbol_prices['timestamp'] <= news_timestamp]
+                    if prices_before.empty:
+                        continue
+                    
+                    # Prix le plus proche avant la news
+                    closest_price_idx = prices_before['timestamp'].idxmax()
+                    p0 = prices_before.loc[closest_price_idx, 'price']
+                    price_timestamp = prices_before.loc[closest_price_idx, 'timestamp']
+                    
+                    # Vérifier que le prix n'est pas trop ancien (max 2h)
+                    time_diff = (news_timestamp - price_timestamp).total_seconds() / 3600
+                    if time_diff > 2:  # Plus de 2h d'écart
+                        continue
+                    
+                    # Prix futur (après fenêtre d'observation)
+                    future_timestamp = news_timestamp + timedelta(minutes=OBSERVATION_WINDOW_MINUTES)
+                    prices_after = symbol_prices[symbol_prices['timestamp'] >= future_timestamp]
+                    
+                    if prices_after.empty:
+                        continue
+                    
+                    # Premier prix après la fenêtre
+                    p1 = prices_after.iloc[0]['price']
+                    variation = (p1 - p0) / p0
+                    
+                    # Logique de classification (même que prepare_dataset.py)
+                    if variation >= BUY_THRESHOLD:
+                        action = "BUY"
+                    elif variation <= SELL_THRESHOLD:
+                        action = "SELL"
+                    else:
+                        # Utiliser le sentiment pour les variations neutres
+                        sentiment = news_row.get('sentiment_score', 0)
+                        if sentiment > 0.1:
+                            action = "BUY"
+                        elif sentiment < -0.1:
+                            action = "SELL"
+                        else:
+                            action = "HOLD"
+                    
+                    training_samples.append({
+                        "symbol": symbol,
+                        "text": news_row.get('content', ''),
+                        "sentiment_score": news_row.get('sentiment_score', 0),
+                        "price_now": p0,
+                        "price_future": p1,
+                        "variation": variation,
+                        "action": action,
+                        "news_timestamp": news_timestamp.isoformat(),
+                        "price_timestamp": price_timestamp.isoformat()
+                    })
+                    
+                    successful_matches += 1
+                    
+                except Exception as e:
+                    print(f"⚠️ Error processing sample for {symbol}: {e}")
+                    continue
         
+        print(f"✅ Generated {len(training_samples)} training samples ({successful_matches} successful matches)")
+        
+        return pd.DataFrame(training_samples)
