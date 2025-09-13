@@ -30,18 +30,32 @@ SEEKING_ALPHA_SECTIONS = [
 ]
 
 def setup_driver():
-    """Setup Selenium driver for seeking alpha (handles JSè-heavy content)"""
+    """Setup Selenium driver for seeking alpha (handles JS-heavy content)"""
     options=Options()
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
-    options.add_arguemnt("--disable-dev-shm-usage")
+    options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
+    options.add_argument("--disable-web-security")
+    options.add_argument("--disable-features=VizDisplayCompositor")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-plugins")
+    options.add_argument("--disable-images")
+    options.add_argument("--window-size=1920,1080")
     options.add_argument(f"--user-agent={headers['User-Agent']}")
-    return webdriver.Chrome(options=options)
+    try:
+        return webdriver.Chrome(options=options)
+    except Exception as e:
+        print(f"[!] Failed to initialize Chrome driver: {e}")
+        return None
 
 def fetch_seeking_alpha_article_links_selenium(max_articles=50):
     """Fetch Seeking Alpha article links using Selenium (for JS content)"""
-    driver=setup_driver()
+    driver = setup_driver()
+    if not driver:
+        print("[!] Failed to setup driver, falling back to requests method")
+        return fetch_seeking_alpha_article_links_requests(max_articles)
+    
     all_links=[]
     for section_url in SEEKING_ALPHA_SECTIONS:
         try:
@@ -87,7 +101,10 @@ def fetch_seeking_alpha_article_links_selenium(max_articles=50):
             print(f"[!] Error scraping {section_url}: {e}")
             continue
     
-    driver.quit()
+    try:
+        driver.quit()
+    except Exception as e:
+        print(f"[!] Error closing driver: {e}")
     
     # Remove duplicates and limit
     unique_links = list(dict.fromkeys(all_links))[:max_articles]
@@ -136,40 +153,70 @@ def fetch_seeking_alpha_article_links_requests(max_articles=50):
     print(f"[✓] {len(unique_links)} Seeking Alpha links found via requests")
     return unique_links
 
-def extract_article_content(url):
+def extract_article_content(url, debug=False):
     """Extract article content from Seeking Alpha article page"""
     try:
         response = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(response.text, "html.parser")
         
-        # Seeking Alpha content selectors
+        # Updated Seeking Alpha content selectors for 2025
         content_selectors = [
-            'div[data-test-id="content-container"] p',
-            'div.paywall-full-content p',
-            'div[data-test-id="article-content"] p',
-            'article .content p',
-            'div.article-content p',
-            '.sa-art p'
+            'div[data-test-id="content-container"]',
+            'div[data-test-id="article-content"]', 
+            'div.paywall-full-content',
+            'article[data-test-id="post"] div',
+            'div.article-content',
+            'section[data-test-id="content-detail"]',
+            '[data-test-id="post-content"]',
+            'div.content-detail',
+            '.article-body',
+            '.paywall-free-content',
+            'div.summary',
+            'div[data-test-id="post-summary"]'
         ]
         
         content = ""
         for selector in content_selectors:
             elements = soup.select(selector)
             if elements:
-                paragraphs = []
-                for p in elements:
-                    text = p.get_text(strip=True)
-                    # Skip Seeking Alpha boilerplate
-                    if (text and 
-                        "This article was written by" not in text and
-                        "Seeking Alpha" not in text and
-                        "Follow" not in text and
-                        "Disclosure:" not in text and
-                        len(text) > 20):
-                        paragraphs.append(text)
+                if debug:
+                    print(f"[DEBUG] Found {len(elements)} elements with selector: {selector}")
                 
-                if paragraphs:
-                    content = " ".join(paragraphs)
+                # Try to extract all text from the container
+                for element in elements:
+                    # Get all paragraph text within the container
+                    paragraphs = element.find_all(['p', 'div'], recursive=True)
+                    if not paragraphs:
+                        # If no paragraphs found, get direct text
+                        text = element.get_text(strip=True)
+                        if text and len(text) > 50:
+                            paragraphs = [text]
+                    
+                    valid_paragraphs = []
+                    for p in paragraphs:
+                        if hasattr(p, 'get_text'):
+                            text = p.get_text(strip=True)
+                        else:
+                            text = str(p).strip()
+                            
+                        # Skip Seeking Alpha boilerplate and short content
+                        if (text and 
+                            len(text) > 20 and
+                            "This article was written by" not in text and
+                            "Seeking Alpha" not in text and
+                            "Follow" not in text and
+                            "Disclosure:" not in text and
+                            "Editor's Note:" not in text and
+                            "Click to enlarge" not in text):
+                            valid_paragraphs.append(text)
+                    
+                    if valid_paragraphs:
+                        content = " ".join(valid_paragraphs)
+                        if debug:
+                            print(f"[DEBUG] Content extracted: {len(content)} chars")
+                        break
+                
+                if content:
                     break
         
         # Alternative approach for paywalled content preview
@@ -202,7 +249,7 @@ def save_articles_to_db(df, db_path=os.path.join(DATA_DIR, "articles.db")):
     conn.close()
     print(f"[✓] {len(df)} Seeking Alpha articles saved to database")
 
-def main(use_selenium=True):
+def main(use_selenium=True, debug=False):
     """Main scraping pipeline for Seeking Alpha"""
     articles = []
     
@@ -220,12 +267,44 @@ def main(use_selenium=True):
     
     for title, url in links:
         print(f"Scraping: {title[:60]}...")
-        content = extract_article_content(url)
+        content = extract_article_content(url, debug=debug)
         time.sleep(2.5)  # Conservative rate limiting for Seeking Alpha
         
-        if len(content.strip()) < 200:  # Lower threshold for SA due to potential paywalls
-            print(f"[!] Content too short for: {title[:40]}...")
-            continue
+        if len(content.strip()) < 50:  # Lowered threshold for SA due to paywalls
+            print(f"[!] Content too short ({len(content)} chars) for: {title[:40]}...")
+            # Try to get summary or preview content if main content fails
+            try:
+                response = requests.get(url, headers=headers, timeout=10)
+                soup = BeautifulSoup(response.text, "html.parser")
+                
+                # Look for article summary or meta description
+                summary_sources = [
+                    soup.find("meta", {"name": "description"}),
+                    soup.find("meta", {"property": "og:description"}),
+                    soup.select_one('div[data-test-id="post-summary"]'),
+                    soup.select_one('.summary')
+                ]
+                
+                fallback_content = ""
+                for source in summary_sources:
+                    if source:
+                        if hasattr(source, 'get'):
+                            fallback_content = source.get('content', '')
+                        else:
+                            fallback_content = source.get_text(strip=True)
+                        
+                        if fallback_content and len(fallback_content) > 50:
+                            content = fallback_content
+                            print(f"[✓] Using fallback content ({len(content)} chars)")
+                            break
+                
+                if len(content.strip()) < 50:
+                    continue
+                    
+            except Exception as e:
+                if debug:
+                    print(f"[DEBUG] Fallback content extraction failed: {e}")
+                continue
             
         articles.append({
             "title": title,
@@ -244,4 +323,4 @@ def main(use_selenium=True):
         print("[!] No valid Seeking Alpha articles found")
 
 if __name__ == "__main__":
-    main()
+    main(debug=True)  # Enable debug for testing
