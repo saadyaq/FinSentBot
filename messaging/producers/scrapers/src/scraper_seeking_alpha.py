@@ -93,3 +93,155 @@ def fetch_seeking_alpha_article_links_selenium(max_articles=50):
     unique_links = list(dict.fromkeys(all_links))[:max_articles]
     print(f"[✓] {len(unique_links)} Seeking Alpha links found")
     return unique_links
+
+def fetch_seeking_alpha_article_links_requests(max_articles=50):
+    """Fallback method using requests (may have limited success due to JS)"""
+    all_links = []
+    
+    for section_url in SEEKING_ALPHA_SECTIONS:
+        try:
+            print(f"[📰] Scraping {section_url} (requests method)...")
+            response = requests.get(section_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(response.text, "html.parser")
+            
+            # Basic selectors that might work without JS
+            link_selectors = [
+                'h3 a[href*="/article/"]',
+                'h3 a[href*="/news/"]',
+                'a[href*="/article/"]',
+                '.title a'
+            ]
+            
+            for selector in link_selectors:
+                elements = soup.select(selector)
+                for elem in elements:
+                    href = elem.get("href", "")
+                    title = elem.get_text(strip=True)
+                    
+                    if href and title and len(title) > 25:
+                        if href.startswith("/"):
+                            href = f"https://seekingalpha.com{href}"
+                        
+                        if ("seekingalpha.com" in href and 
+                            title not in [link[0] for link in all_links]):
+                            all_links.append((title, href))
+            
+            time.sleep(1)
+            
+        except Exception as e:
+            print(f"[!] Error scraping {section_url}: {e}")
+            continue
+    
+    unique_links = list(dict.fromkeys(all_links))[:max_articles]
+    print(f"[✓] {len(unique_links)} Seeking Alpha links found via requests")
+    return unique_links
+
+def extract_article_content(url):
+    """Extract article content from Seeking Alpha article page"""
+    try:
+        response = requests.get(url, headers=headers, timeout=15)
+        soup = BeautifulSoup(response.text, "html.parser")
+        
+        # Seeking Alpha content selectors
+        content_selectors = [
+            'div[data-test-id="content-container"] p',
+            'div.paywall-full-content p',
+            'div[data-test-id="article-content"] p',
+            'article .content p',
+            'div.article-content p',
+            '.sa-art p'
+        ]
+        
+        content = ""
+        for selector in content_selectors:
+            elements = soup.select(selector)
+            if elements:
+                paragraphs = []
+                for p in elements:
+                    text = p.get_text(strip=True)
+                    # Skip Seeking Alpha boilerplate
+                    if (text and 
+                        "This article was written by" not in text and
+                        "Seeking Alpha" not in text and
+                        "Follow" not in text and
+                        "Disclosure:" not in text and
+                        len(text) > 20):
+                        paragraphs.append(text)
+                
+                if paragraphs:
+                    content = " ".join(paragraphs)
+                    break
+        
+        # Alternative approach for paywalled content preview
+        if not content:
+            # Look for preview/summary content
+            preview_selectors = [
+                'div.summary p',
+                'div.article-summary p',
+                '.lead-summary',
+                'div[data-test-id="post-summary"]'
+            ]
+            
+            for selector in preview_selectors:
+                elements = soup.select(selector)
+                if elements:
+                    content = " ".join(elem.get_text(strip=True) for elem in elements)
+                    break
+        
+        return content.strip()
+        
+    except Exception as e:
+        print(f"[!] Error extracting content from {url}: {e}")
+        return ""
+
+def save_articles_to_db(df, db_path=os.path.join(DATA_DIR, "articles.db")):
+    """Save articles to SQLite database"""
+    conn = sqlite3.connect(db_path)
+    df.to_sql("articles", conn, if_exists="append", index=False)
+    conn.commit()
+    conn.close()
+    print(f"[✓] {len(df)} Seeking Alpha articles saved to database")
+
+def main(use_selenium=True):
+    """Main scraping pipeline for Seeking Alpha"""
+    articles = []
+    
+    # Try Selenium first for better JS support, fallback to requests
+    if use_selenium:
+        try:
+            links = fetch_seeking_alpha_article_links_selenium()
+        except Exception as e:
+            print(f"[!] Selenium failed: {e}, falling back to requests...")
+            links = fetch_seeking_alpha_article_links_requests()
+    else:
+        links = fetch_seeking_alpha_article_links_requests()
+    
+    print(f"Processing {len(links)} Seeking Alpha articles...")
+    
+    for title, url in links:
+        print(f"Scraping: {title[:60]}...")
+        content = extract_article_content(url)
+        time.sleep(2.5)  # Conservative rate limiting for Seeking Alpha
+        
+        if len(content.strip()) < 200:  # Lower threshold for SA due to potential paywalls
+            print(f"[!] Content too short for: {title[:40]}...")
+            continue
+            
+        articles.append({
+            "title": title,
+            "content": content,
+            "summary": None,
+            "url": url,
+            "source": "Seeking Alpha",
+            "date": pd.Timestamp.now().strftime("%Y-%m-%d")
+        })
+    
+    if articles:
+        df = pd.DataFrame(articles)
+        save_articles_to_db(df)
+        print(f"[✅] Seeking Alpha scraping completed: {len(articles)} articles")
+    else:
+        print("[!] No valid Seeking Alpha articles found")
+
+if __name__ == "__main__":
+    main()
