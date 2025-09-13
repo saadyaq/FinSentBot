@@ -39,7 +39,7 @@ def fetch_reuters_article_links(max_articles=50):
         api_headers={
             **headers,
             "Accept":"application/json",
-            "Referer":"https/www.reuters.com/business/"
+            "Referer":"https://www.reuters.com/business/"
         }
 
         response= requests.get(REUTERS_API_URL,params=params, headers=api_headers,timeout=10)
@@ -52,17 +52,17 @@ def fetch_reuters_article_links(max_articles=50):
                 canonical_url=item.get("canonical_url","")
                 if title and canonical_url :
                     full_url=f"https://www.reuters.com{canonical_url}"
-                    articles.append((title.strip()),full_url)
+                    articles.append((title.strip(), full_url))
 
             print(f"{len(articles)} Reuters Business articles found via API")
-            return max[:max_articles]
+            return articles[:max_articles]
     
     except Exception as e:
         print(f"API approach failed:{e}, trying web scraping")
 
     
     try:
-        response=response.get(REUTERS_BUSINESS_URL,headers=headers,timeout=10)
+        response=requests.get(REUTERS_BUSINESS_URL,headers=headers,timeout=10)
         soup=BeautifulSoup(response.text,"html.parser")
         links=[]
 
@@ -71,7 +71,7 @@ def fetch_reuters_article_links(max_articles=50):
             'a[data-testid="Link"]',
             'h3 a',
             '.story-title a',
-            'a[href*="/business/]'
+            'a[href*="/business/"]'
         ]
 
         for selector in article_selectors:
@@ -82,7 +82,7 @@ def fetch_reuters_article_links(max_articles=50):
 
                 if href and title and len(title) >30:
                     if href.startswith("/"):
-                        href=f"https://reuters.com{href}"
+                        href=f"https://www.reuters.com{href}"
                     elif not href.startswith("http"):
                         continue
                     
@@ -122,11 +122,11 @@ def extract_article_content(url):
                 content=" ".join(p.get_text(strip=True) for p in elements)
                 break
             
-            if not content:
-                paragraphs=soup.find_all("p")
-                content=" ".join(p.get_text(strip=True) for p in paragraphs)
-            
-            content = content.replace("Register now for FREE unlimited access to Reuters.com", "")
+        if not content:
+            paragraphs=soup.find_all("p")
+            content=" ".join(p.get_text(strip=True) for p in paragraphs)
+        
+        content = content.replace("Register now for FREE unlimited access to Reuters.com", "")
         content = content.replace("Reporting by", " Reporting by")
         
         return content
@@ -134,3 +134,45 @@ def extract_article_content(url):
     except Exception as e:
         print(f"[!] Error extracting content from {url}: {e}")
         return ""
+
+def save_articles_to_db(df, db_path=os.path.join(DATA_DIR, "articles.db")):
+    """Save articles to SQLite database"""
+    conn = sqlite3.connect(db_path)
+    df.to_sql("articles", conn, if_exists="append", index=False)
+    conn.commit()
+    conn.close()
+    print(f"[✓] {len(df)} Reuters articles saved to database")
+
+def main():
+    """Main scraping pipeline for Reuters Business"""
+    articles = []
+    links = fetch_reuters_article_links()
+    print(f"Processing {len(links)} Reuters Business articles...")
+    
+    for title, url in links:
+        print(f"Scraping: {title[:60]}...")
+        content = extract_article_content(url)
+        time.sleep(1.5)  # Respectful rate limiting
+        
+        if len(content.strip()) < 300:
+            print(f"[!] Content too short for: {title[:40]}...")
+            continue
+            
+        articles.append({
+            "title": title,
+            "content": content,
+            "summary": None,
+            "url": url,
+            "source": "Reuters Business",
+            "date": pd.Timestamp.now().strftime("%Y-%m-%d")
+        })
+    
+    if articles:
+        df = pd.DataFrame(articles)
+        save_articles_to_db(df)
+        print(f"[✅] Reuters Business scraping completed: {len(articles)} articles")
+    else:
+        print("[!] No valid Reuters articles found")
+
+if __name__ == "__main__":
+    main()
