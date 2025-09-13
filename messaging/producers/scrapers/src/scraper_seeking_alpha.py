@@ -28,3 +28,15 @@ SEEKING_ALPHA_SECTIONS = [
     "https://seekingalpha.com/market-news",
     "https://seekingalpha.com/earnings/earnings-news"
 ]
+
+def setup_driver():
+    """Setup Selenium driver for seeking alpha (handles JSè-heavy content)"""
+    options=Options()
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_arguemnt("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument(f"--user-agent={headers['User-Agent']}")
+    return webdriver.Chrome(options=options)
+
+
