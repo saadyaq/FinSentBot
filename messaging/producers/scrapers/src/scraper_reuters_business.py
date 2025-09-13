@@ -100,4 +100,37 @@ def fetch_reuters_article_links(max_articles=50):
 def extract_article_content(url):
     """Extract article content from Reuters article page"""
 
-    
+    try:
+        response= requests.get(url,headers=headers,timeout=15)
+        soup=BeautifulSoup(response.text,"html.parser")
+
+        content_selectors=[
+            'div[data-testid="paragraph"]',  # Primary content
+            'div[data-testid="ArticleBody"] p',
+            'div.StandardArticleBody_body p',
+            'div.ArticleBodyWrapper p',
+            'div[data-module="ArticleBody"] p',
+            '.PaywallArticleBody_container p'
+        ]
+
+        content=""
+
+        for selector in content_selectors:
+
+            elements=soup.select(selector)
+            if elements:
+                content=" ".join(p.get_text(strip=True) for p in elements)
+                break
+            
+            if not content:
+                paragraphs=soup.find_all("p")
+                content=" ".join(p.get_text(strip=True) for p in paragraphs)
+            
+            content = content.replace("Register now for FREE unlimited access to Reuters.com", "")
+        content = content.replace("Reporting by", " Reporting by")
+        
+        return content
+
+    except Exception as e:
+        print(f"[!] Error extracting content from {url}: {e}")
+        return ""
