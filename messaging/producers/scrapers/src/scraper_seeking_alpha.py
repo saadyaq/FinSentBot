@@ -39,4 +39,57 @@ def setup_driver():
     options.add_argument(f"--user-agent={headers['User-Agent']}")
     return webdriver.Chrome(options=options)
 
+def fetch_seeking_alpha_article_links_selenium(max_articles=50):
+    """Fetch Seeking Alpha article links using Selenium (for JS content)"""
+    driver=setup_driver()
+    all_links=[]
+    for section_url in SEEKING_ALPHA_SECTIONS:
+        try:
+            print(f"Scraping {section_url}")
+            driver.get(section_url)
+            WebDriverWait(driver,10).until(
+                EC.presence_of_element_located((By.TAG_NAME,"article"))
+            )
 
+            time.sleep(3)
+            soup=BeautifulSoup(driver.page_source,'html.parser')
+
+            link_selectors=[
+                'article h3 a',
+                'a[data-test-id="post-list-item-title"]',
+                'h3 a[href*="/article/"]',
+                'h3 a[href*="/news/"]',
+                '.media-body h3 a',
+                'article .title a'
+            ]
+            for selector in link_selectors:
+                elements=soup.select(selector)
+                for elem in elements:
+                    href = elem.get("href", "")
+                    title = elem.get_text(strip=True)
+                    
+                    if href and title and len(title) > 25:
+                        # Ensure full URL
+                        if href.startswith("/"):
+                            href = f"https://seekingalpha.com{href}"
+                        elif not href.startswith("http"):
+                            continue
+                            
+                        # Filter for relevant articles
+                        if ("seekingalpha.com" in href and 
+                            ("/article/" in href or "/news/" in href) and
+                            title not in [link[0] for link in all_links]):
+                            all_links.append((title, href))
+            
+            time.sleep(2)  # Rate limiting between sections
+            
+        except Exception as e:
+            print(f"[!] Error scraping {section_url}: {e}")
+            continue
+    
+    driver.quit()
+    
+    # Remove duplicates and limit
+    unique_links = list(dict.fromkeys(all_links))[:max_articles]
+    print(f"[✓] {len(unique_links)} Seeking Alpha links found")
+    return unique_links
