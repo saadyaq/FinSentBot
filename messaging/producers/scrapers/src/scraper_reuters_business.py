@@ -47,3 +47,57 @@ def fetch_reuters_article_links(max_articles=50):
             data=response.json()
             articles=[]
             
+            for item in data.get("result",{}).get("articles",[]):
+                title=item.get("title")
+                canonical_url=item.get("canonical_url","")
+                if title and canonical_url :
+                    full_url=f"https://www.reuters.com{canonical_url}"
+                    articles.append((title.strip()),full_url)
+
+            print(f"{len(articles)} Reuters Business articles found via API")
+            return max[:max_articles]
+    
+    except Exception as e:
+        print(f"API approach failed:{e}, trying web scraping")
+
+    
+    try:
+        response=response.get(REUTERS_BUSINESS_URL,headers=headers,timeout=10)
+        soup=BeautifulSoup(response.text,"html.parser")
+        links=[]
+
+        article_selectors=[
+            'a[data-testid="Heading"]',
+            'a[data-testid="Link"]',
+            'h3 a',
+            '.story-title a',
+            'a[href*="/business/]'
+        ]
+
+        for selector in article_selectors:
+            elements=soup.select(selector)
+            for elem in elements:
+                href=elem.get("href","")
+                title=elem.get_text(strip=True)
+
+                if href and title and len(title) >30:
+                    if href.startswith("/"):
+                        href=f"https://reuters.com{href}"
+                    elif not href.startswith("http"):
+                        continue
+                    
+                    if "/business/" in href and "reuters.com" in href:
+                        links.append((title,href))
+                    
+        unique_links=list(dict.fromkeys(links))[:max_articles]
+        print(f"{len(unique_links)} Reuters Business links found via scraping")
+        return unique_links
+    except Exception as e :
+        print(f" Error fetching Reuters links:{e}")
+        return []
+
+
+def extract_article_content(url):
+    """Extract article content from Reuters article page"""
+
+    
