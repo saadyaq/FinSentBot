@@ -11,6 +11,13 @@ from messaging.producers.scrapers.src.scraper_cnbc import fetch_cnbc_article_lin
 from messaging.producers.scrapers.src.scraper_coindesk import fetch_coindesk_links, extract_article_content as extract_coindesk
 from messaging.producers.scrapers.src.scraper_ft import fetch_ft_article_links , extract_article_content as extract_ft
 from messaging.producers.scrapers.src.scraper_tc import fetch_tc_article_links, extract_article_content as extract_tc
+from messaging.producers.scrapers.src.scraper_market_watcher import fetch_marketwatch_article_links, extract_article_content as extract_marketwatch
+from messaging.producers.scrapers.src.scraper_motley_fool import fetch_motley_fool_article_links, extract_article_content as extract_motley_fool
+from messaging.producers.scrapers.src.scraper_reuters_business import fetch_reuters_article_links, extract_article_content as extract_reuters
+from messaging.producers.scrapers.src.scraper_seeking_alpha import fetch_seeking_alpha_article_links_requests as fetch_seeking_alpha_links, extract_article_content as extract_seeking_alpha
+from messaging.producers.scrapers.src.scraper_reddit import fetch_reddit_posts
+from messaging.producers.scrapers.src.scraper_stocktwits import fetch_stocktwits_posts
+from messaging.producers.scrapers.src.scraper_twitter import fetch_twitter_posts
 
 # === S&P 500 Company Keywords ===
 SP500_KEYWORDS = {
@@ -130,18 +137,81 @@ def scrape_and_send(source, fetch_links, extract_func):
     except Exception as e:
         print(f"⚠️ Error scraping {source}: {e}")
 
+def scrape_social_media_and_send(source, fetch_posts_func):
+    """
+    Handle social media scrapers (Reddit, StockTwits, Twitter) 
+    which return different data structures
+    """
+    print(f"🔍 Scraping {source}...")
+    
+    try:
+        posts = fetch_posts_func()
+        print(f"[✓] {len(posts)} posts found for {source}")
+        
+        for post_data in posts:
+            if source == "Reddit":
+                title, url, content = post_data
+            elif source == "StockTwits":
+                content, symbol, url = post_data
+                title = f"StockTwits post about ${symbol}"
+            elif source == "Twitter":
+                content, url = post_data
+                title = f"Twitter post: {content[:50]}..."
+            else:
+                continue
+                
+            time.sleep(1)
+            
+            if len(content.strip()) < 50:
+                continue
+            
+            # Check for S&P 500 company mentions
+            full_text = f"{title} {content}"
+            has_sp500, mentioned_symbols = contains_sp500_mention(full_text)
+            
+            # Only send posts that mention S&P 500 companies
+            if not has_sp500:
+                print(f"⏭️  Skipped (no S&P 500 mention): {title[:60]}...")
+                continue
+            
+            message = {
+                "source": source,
+                "title": title,
+                "content": content,
+                "url": url,
+                "timestamp": datetime.utcnow().isoformat(),
+                "mentioned_symbols": mentioned_symbols
+            }
+            
+            producer.send(KAFKA_CONFIG["topics"]["raw_news"], value=message)
+            print(f"📤 Sent to Kafka [{','.join(mentioned_symbols)}]: {title}")
+            
+    except Exception as e:
+        print(f"⚠️ Error scraping {source}: {e}")
+
 def main():
 
     while True:
 
         print("\n=== 🗞️ New Scraping Round Started ===\n")
+        
+        # Traditional news scrapers
         scrape_and_send("CNBC", fetch_cnbc_article_links, extract_cnbc)
         scrape_and_send("CoinDesk", fetch_coindesk_links, extract_coindesk)
         scrape_and_send("Financial Times", fetch_ft_article_links, extract_ft)
         scrape_and_send("TechCrunch", fetch_tc_article_links, extract_tc)
+        scrape_and_send("MarketWatch", fetch_marketwatch_article_links, extract_marketwatch)
+        scrape_and_send("The Motley Fool", fetch_motley_fool_article_links, extract_motley_fool)
+        scrape_and_send("Reuters Business", fetch_reuters_article_links, extract_reuters)
+        scrape_and_send("Seeking Alpha", fetch_seeking_alpha_links, extract_seeking_alpha)
+        
+        # Social media scrapers
+        scrape_social_media_and_send("Reddit", fetch_reddit_posts)
+        scrape_social_media_and_send("StockTwits", fetch_stocktwits_posts)
+        scrape_social_media_and_send("Twitter", fetch_twitter_posts)
         
         print("\n✅ Scraping round complete. Sleeping for 20 minutes...\n")
-        time.sleep(1200)  # toutes les 30 minutes
+        time.sleep(1200)  # Every 20 minutes
 
 if __name__ == "__main__":
     main()
