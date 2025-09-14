@@ -112,7 +112,7 @@ def scrape_and_send(source, fetch_links, extract_func):
 
             if len(content.strip()) <300:
                 continue 
-            
+            #test
             # Check for S&P 500 company mentions
             full_text = f"{title} {content}"
             has_sp500, mentioned_symbols = contains_sp500_mention(full_text)
