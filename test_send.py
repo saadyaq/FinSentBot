@@ -19,3 +19,4 @@ producer.flush()
 print("✅ Message sent to raw_news | topic:", result.topic, "| partition:", result.partition)
 
 
+"hisdjshksudfhsdfikhrfis"
