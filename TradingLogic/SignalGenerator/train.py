@@ -109,3 +109,20 @@ class LSTMGenerator(nn.Module):
         confidence=self.confidence(logits)
 
         return logits, confidence 
+
+class AdvancedSignalGenerator:
+    """Enhanced signal generator with risk management and real-time processing"""
+    def __init__(self,model_path:str=None):
+        self.model=None
+        self.scaler=StandardScaler()
+        self.tech_indicators=TechnicalIndicators()
+        self.sequence_length=20
+        self.min_confidence_threshold=0.7
+        self.risk_per_trade=0.02
+
+        if model_path:
+            self.load_model(model_path)
+        else:
+            self.model=LSTMGenerator(input_dim=15)
+    
+    

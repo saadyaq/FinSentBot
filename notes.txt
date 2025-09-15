@@ -56,3 +56,4 @@ Lorsqu'une news est publiée, l'effet sur le marché ne se produit pas instantan
 
 Donc on définit une fenêtre de temps (par ex. 10 minutes) après la publication d'une news pour mesurer la variation du prix.
 
+ python -m messaging.consumers.sentiment_analysis_consumer
