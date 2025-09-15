@@ -4,7 +4,7 @@ from typing import Tuple
 
 class LSTMSignalGenerator(nn.Module):
     """
-    🧠 Modèle LSTM avec mécanisme d'attention pour signaux de trading
+    Modèle LSTM avec mécanisme d'attention pour signaux de trading
     
     Architecture :
     - LSTM multi-couches pour capturer les séquences temporelles
@@ -79,7 +79,7 @@ class LSTMSignalGenerator(nn.Module):
 
 class SimpleMLP(nn.Module):
     """
-    🔨 Modèle MLP simple pour comparaison/prototypage rapide
+     Modèle MLP simple pour comparaison/prototypage rapide
     """
     
     def __init__(self, input_dim: int, hidden_dim: int = 32, output_dim: int = 3):
