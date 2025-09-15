@@ -72,3 +72,30 @@ class TechnicalIndicators:
                 mas[f'ma_{period}'] = float(prices.iloc[-1])
         
         return mas
+
+class LSTMGenerator(nn.Module):
+    """Advanced LSTM-based signal generator"""
+
+    def __init__(self,input_dim:int,hidden_dim:int=64, num_layers:int=2, output_dim:int=3):
+        super().__init__()
+        self.hidden_dim=hidden_dim
+        self.num__layers=num_layers
+        #LSTM LAYER
+        self.lstm=nn.LSTM(input_dim,hidden_dim,num_layers,batch_first=True,dropout=0.2)
+
+        #Attention mechanism
+        self.attention=nn.MultiheadAttention(hidden_dim,num_head=4, batch_first=True)
+
+        #Output Classifier
+        self.classifier=nn.Sequential(
+            nn.Linear(hidden_dim,hidden_dim//2),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(hidden_dim//2,output_dim)
+        )
+
+        #Confidence estimator
+        self.confidence=nn.Sequential(
+            nn.Linear(hidden_dim,1),
+            nn.Sigmoid()
+        )
