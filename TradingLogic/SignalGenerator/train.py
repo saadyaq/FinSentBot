@@ -56,4 +56,19 @@ class TechnicalIndicators:
 
         return float(upper.iloc[-1]), (float(sma.iloc[-1])), float(lower.iloc[-1])
     
-    
+    @staticmethod
+    def macd(prices:pd.Series) ->Tuple[float,float]:
+        """Macd and Signal Line"""
+
+        if len(prices) < 26:
+            return 0.0,0.0
+        ma_periods=[5,10,20,50]
+        mas={}
+
+        for period in ma_periods:
+            if len(prices) >= period:
+                mas[f'ma_{period}'] = float(prices.rolling(window=period).mean().iloc[-1])
+            else:
+                mas[f'ma_{period}'] = float(prices.iloc[-1])
+        
+        return mas
