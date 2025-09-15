@@ -25,9 +25,19 @@ FINANCIAL_HASHTAGS = [
 # Use alternative Twitter frontends for scraping
 NITTER_INSTANCES = [
     "https://nitter.net",
-    "https://nitter.it", 
-    "https://nitter.fdn.fr"
+    "https://nitter.it",
+    "https://nitter.privacydev.net",
+    "https://nitter.1d4.us",
+    "https://nitter.kavin.rocks"
 ]
+
+def test_nitter_instance(instance):
+    """Test if a Nitter instance is accessible"""
+    try:
+        response = requests.get(f"{instance}/about", headers=headers, timeout=5)
+        return response.status_code == 200
+    except:
+        return False
 
 def fetch_twitter_posts():
     """
@@ -35,40 +45,64 @@ def fetch_twitter_posts():
     Returns list of (text, url) tuples
     """
     posts = []
+    working_instances = []
     
+    # Test instances first
+    print("Testing Nitter instances...")
     for instance in NITTER_INSTANCES:
+        if test_nitter_instance(instance):
+            working_instances.append(instance)
+            print(f"[✓] {instance} is accessible")
+        else:
+            print(f"[✗] {instance} is not accessible")
+    
+    if not working_instances:
+        print("[!] No working Nitter instances found. Twitter scraping disabled.")
+        return []
+    
+    for instance in working_instances[:2]:  # Use max 2 working instances
         try:
             for hashtag in FINANCIAL_HASHTAGS[:3]:  # Limit to avoid rate limiting
                 search_url = f"{instance}/search?f=tweets&q={hashtag}"
                 
                 try:
-                    response = requests.get(search_url, headers=headers, timeout=10)
+                    response = requests.get(search_url, headers=headers, timeout=15)
                     if response.status_code != 200:
+                        print(f"[!] HTTP {response.status_code} for {search_url}")
                         continue
                         
                     soup = BeautifulSoup(response.text, 'html.parser')
                     
-                    # Find tweet containers
-                    tweets = soup.find_all('div', class_='timeline-item')
+                    # Find tweet containers - try multiple selectors
+                    tweets = (soup.find_all('div', class_='timeline-item') or 
+                             soup.find_all('div', class_='tweet') or
+                             soup.find_all('article'))
                     
                     for tweet in tweets[:10]:  # Limit per hashtag
                         try:
-                            # Extract tweet text
-                            tweet_text_elem = tweet.find('div', class_='tweet-content')
+                            # Try multiple selectors for tweet content
+                            tweet_text_elem = (tweet.find('div', class_='tweet-content') or
+                                             tweet.find('div', class_='tweet-text') or
+                                             tweet.find('p'))
+                            
                             if not tweet_text_elem:
                                 continue
                                 
                             tweet_text = tweet_text_elem.get_text(strip=True)
                             
                             # Skip if too short
-                            if len(tweet_text) < 50:
+                            if len(tweet_text) < 30:
                                 continue
                             
                             # Extract tweet URL
-                            tweet_link = tweet.find('a', class_='tweet-link')
+                            tweet_link = tweet.find('a', class_='tweet-link') or tweet.find('a')
                             tweet_url = ""
-                            if tweet_link:
-                                tweet_url = instance + tweet_link.get('href', '')
+                            if tweet_link and tweet_link.get('href'):
+                                href = tweet_link.get('href')
+                                if href.startswith('/'):
+                                    tweet_url = instance + href
+                                else:
+                                    tweet_url = href
                             
                             # Check if tweet contains stock symbols or financial terms
                             if contains_financial_content(tweet_text):
@@ -78,14 +112,15 @@ def fetch_twitter_posts():
                             print(f"Error processing tweet: {e}")
                             continue
                     
-                    time.sleep(2)  # Rate limiting
+                    print(f"[+] Found {len(posts)} posts from {hashtag} on {instance}")
+                    time.sleep(3)  # Rate limiting
                     
                 except Exception as e:
                     print(f"Error fetching from {search_url}: {e}")
                     continue
             
-            # If we got some posts from this instance, break
-            if posts:
+            # If we got some posts from this instance, continue to next
+            if len(posts) >= 10:  # Stop if we have enough posts
                 break
                 
         except Exception as e:

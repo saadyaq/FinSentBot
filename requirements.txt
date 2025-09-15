@@ -19,6 +19,6 @@ plotly
 #Utilitaires
 pandas
 python-dotenv
-
+scikit-learn
 #Logging
 logging

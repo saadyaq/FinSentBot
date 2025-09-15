@@ -11,7 +11,6 @@ import os
 # Configuration de la page
 st.set_page_config(
     page_title="FinSentBot Dashboard",
-    page_icon="=È",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -24,17 +23,17 @@ TRAINING_DATA_PATH = f"{DATA_PATH}/training_datasets"
 
 @st.cache_data
 def load_training_data():
-    """Charger le dataset d'entraînement"""
+    """Charger le dataset d'entraÃ®nement"""
     try:
         df = pd.read_csv(f"{TRAINING_DATA_PATH}/train.csv")
         return df
     except Exception as e:
-        st.error(f"Erreur lors du chargement des données d'entraînement: {e}")
+        st.error(f"Erreur lors du chargement des donnÃ©es d'entraÃ®nement: {e}")
         return pd.DataFrame()
 
 @st.cache_data
 def load_news_sentiment():
-    """Charger les données de sentiment des news"""
+    """Charger les donnÃ©es de sentiment des news"""
     try:
         news_data = []
         with open(f"{RAW_DATA_PATH}/news_sentiment.jsonl", 'r') as f:
@@ -45,7 +44,7 @@ def load_news_sentiment():
             df['timestamp'] = pd.to_datetime(df['timestamp'])
         return df
     except Exception as e:
-        st.error(f"Erreur lors du chargement des données de sentiment: {e}")
+        st.error(f"Erreur lors du chargement des donnÃ©es de sentiment: {e}")
         return pd.DataFrame()
 
 @st.cache_data
@@ -65,17 +64,17 @@ def load_stock_prices():
         return pd.DataFrame()
 
 def main():
-    st.title("=È FinSentBot Dashboard")
+    st.title("FinSentBot Dashboard")
     st.markdown("Dashboard de visualisation pour l'analyse de sentiment financier et les signaux de trading")
 
     # Sidebar pour navigation
     st.sidebar.title("Navigation")
     page = st.sidebar.selectbox(
         "Choisir une page:",
-        ["Vue d'ensemble", "Signaux de Trading", "Analyse de Sentiment", "Performance", "Données Temps Réel"]
+        ["Vue d'ensemble", "Signaux de Trading", "Analyse de Sentiment", "Performance", "DonnÃ©es Temps RÃ©el"]
     )
 
-    # Charger les données
+    # Charger les donnÃ©es
     training_data = load_training_data()
     news_data = load_news_sentiment()
     price_data = load_stock_prices()
@@ -88,24 +87,24 @@ def main():
         sentiment_analysis_page(news_data, training_data)
     elif page == "Performance":
         performance_page(training_data)
-    elif page == "Données Temps Réel":
+    elif page == "DonnÃ©es Temps RÃ©el":
         realtime_data_page(price_data, news_data)
 
 def overview_page(training_data, news_data, price_data):
     """Page vue d'ensemble"""
-    st.header("=Ê Vue d'ensemble")
+    st.header("Vue d'ensemble")
     
-    # Métriques principales
+    # MÃ©triques principales
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Articles analysés", len(news_data) if not news_data.empty else 0)
+        st.metric("Articles analysÃ©s", len(news_data) if not news_data.empty else 0)
     
     with col2:
-        st.metric("Actions surveillées", len(training_data['symbol'].unique()) if not training_data.empty else 0)
+        st.metric("Actions surveillÃ©es", len(training_data['symbol'].unique()) if not training_data.empty else 0)
     
     with col3:
-        st.metric("Signaux générés", len(training_data) if not training_data.empty else 0)
+        st.metric("Signaux gÃ©nÃ©rÃ©s", len(training_data) if not training_data.empty else 0)
     
     with col4:
         avg_sentiment = training_data['sentiment_score'].mean() if not training_data.empty else 0
@@ -118,7 +117,7 @@ def overview_page(training_data, news_data, price_data):
         fig_actions = px.pie(
             values=action_counts.values, 
             names=action_counts.index,
-            title="Répartition des signaux BUY/SELL/HOLD",
+            title="RÃ©partition des signaux BUY/SELL/HOLD",
             color_discrete_map={'BUY': '#00CC96', 'SELL': '#EF553B', 'HOLD': '#FFA15A'}
         )
         st.plotly_chart(fig_actions, use_container_width=True)
@@ -127,7 +126,7 @@ def overview_page(training_data, news_data, price_data):
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("Actions les plus analysées")
+            st.subheader("Actions les plus analysÃ©es")
             top_symbols = training_data['symbol'].value_counts().head(10)
             fig_symbols = px.bar(
                 x=top_symbols.values, 
@@ -149,10 +148,10 @@ def overview_page(training_data, news_data, price_data):
 
 def trading_signals_page(training_data):
     """Page signaux de trading"""
-    st.header("<¯ Signaux de Trading")
+    st.header("Signaux de Trading")
     
     if training_data.empty:
-        st.warning("Aucune donnée de trading disponible")
+        st.warning("Aucune donnÃ©e de trading disponible")
         return
 
     # Filtres
@@ -197,26 +196,26 @@ def trading_signals_page(training_data):
         )
         st.plotly_chart(fig_box, use_container_width=True)
 
-    # Tableau des signaux récents
-    st.subheader("Signaux récents")
+    # Tableau des signaux rÃ©cents
+    st.subheader("Signaux rÃ©cents")
     if not filtered_data.empty:
         display_cols = ['symbol', 'action', 'sentiment_score', 'price_now', 'variation']
         st.dataframe(filtered_data[display_cols].head(20))
 
 def sentiment_analysis_page(news_data, training_data):
     """Page analyse de sentiment"""
-    st.header("=­ Analyse de Sentiment")
+    st.header("Analyse de Sentiment")
     
     if news_data.empty and training_data.empty:
-        st.warning("Aucune donnée de sentiment disponible")
+        st.warning("Aucune donnÃ©e de sentiment disponible")
         return
 
-    # Utiliser les données de news si disponibles, sinon les données d'entraînement
+    # Utiliser les donnÃ©es de news si disponibles, sinon les donnÃ©es d'entraÃ®nement
     data_to_use = news_data if not news_data.empty else training_data
     
-    # Évolution du sentiment dans le temps
+    # Ã‰volution du sentiment dans le temps
     if 'timestamp' in data_to_use.columns:
-        st.subheader("Évolution du sentiment dans le temps")
+        st.subheader("Ã‰volution du sentiment dans le temps")
         
         # Grouper par jour
         data_to_use['date'] = pd.to_datetime(data_to_use['timestamp']).dt.date
@@ -226,7 +225,7 @@ def sentiment_analysis_page(news_data, training_data):
             daily_sentiment,
             x='date',
             y='mean',
-            title="Évolution du sentiment moyen par jour"
+            title="Ã‰volution du sentiment moyen par jour"
         )
         fig_timeline.add_hline(y=0, line_dash="dash", line_color="gray")
         st.plotly_chart(fig_timeline, use_container_width=True)
@@ -246,7 +245,7 @@ def sentiment_analysis_page(news_data, training_data):
         )
         st.plotly_chart(fig_source, use_container_width=True)
 
-    # Mots-clés les plus fréquents (analyse simplifiée)
+    # Mots-clÃ©s les plus frÃ©quents (analyse simplifiÃ©e)
     if 'content' in data_to_use.columns or 'text' in data_to_use.columns:
         st.subheader("Analyse textuelle")
         text_column = 'content' if 'content' in data_to_use.columns else 'text'
@@ -264,59 +263,59 @@ def sentiment_analysis_page(news_data, training_data):
             st.plotly_chart(fig_hist, use_container_width=True)
         
         with col2:
-            # Catégoriser les sentiments
+            # CatÃ©goriser les sentiments
             data_to_use['sentiment_category'] = pd.cut(
                 data_to_use['sentiment_score'],
                 bins=[-1, -0.1, 0.1, 1],
-                labels=['Négatif', 'Neutre', 'Positif']
+                labels=['NÃ©gatif', 'Neutre', 'Positif']
             )
             sentiment_counts = data_to_use['sentiment_category'].value_counts()
             
             fig_pie = px.pie(
                 values=sentiment_counts.values,
                 names=sentiment_counts.index,
-                title="Répartition des catégories de sentiment"
+                title="RÃ©partition des catÃ©gories de sentiment"
             )
             st.plotly_chart(fig_pie, use_container_width=True)
 
 def performance_page(training_data):
     """Page performance"""
-    st.header("=È Performance du Modèle")
+    st.header("Performance du ModÃ¨le")
     
     if training_data.empty:
-        st.warning("Aucune donnée de performance disponible")
+        st.warning("Aucune donnÃ©e de performance disponible")
         return
 
-    # Métriques de performance
+    # MÃ©triques de performance
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        # Précision par action
+        # PrÃ©cision par action
         action_counts = training_data['action'].value_counts()
-        st.metric("Signal le plus fréquent", action_counts.index[0])
+        st.metric("Signal le plus frÃ©quent", action_counts.index[0])
     
     with col2:
         # Correlation sentiment-variation
         if 'sentiment_score' in training_data.columns and 'variation' in training_data.columns:
             correlation = training_data['sentiment_score'].corr(training_data['variation'])
-            st.metric("Corrélation Sentiment-Variation", f"{correlation:.3f}")
+            st.metric("CorrÃ©lation Sentiment-Variation", f"{correlation:.3f}")
     
     with col3:
-        # Variation moyenne positive vs négative
+        # Variation moyenne positive vs nÃ©gative
         positive_sentiment = training_data[training_data['sentiment_score'] > 0]['variation'].mean()
         st.metric("Variation moy. (sentiment +)", f"{positive_sentiment:.3f}%")
 
-    # Matrice de confusion simulée
+    # Matrice de confusion simulÃ©e
     st.subheader("Analyse des signaux par sentiment")
     
-    # Créer des catégories de sentiment
+    # CrÃ©er des catÃ©gories de sentiment
     training_data['sentiment_category'] = pd.cut(
         training_data['sentiment_score'],
         bins=[-1, -0.1, 0.1, 1],
-        labels=['Négatif', 'Neutre', 'Positif']
+        labels=['NÃ©gatif', 'Neutre', 'Positif']
     )
     
-    # Table croisée
+    # Table croisÃ©e
     crosstab = pd.crosstab(training_data['sentiment_category'], training_data['action'])
     
     # Heatmap
@@ -343,8 +342,8 @@ def performance_page(training_data):
     st.dataframe(symbol_performance)
 
 def realtime_data_page(price_data, news_data):
-    """Page données temps réel"""
-    st.header("¡ Données Temps Réel")
+    """Page donnÃ©es temps rÃ©el"""
+    st.header("DonnÃ©es Temps RÃ©el")
     
     # Auto-refresh
     if st.checkbox("Auto-refresh (30s)"):
@@ -359,9 +358,9 @@ def realtime_data_page(price_data, news_data):
             latest_prices = price_data.sort_values('timestamp').groupby('symbol').tail(1)
             st.dataframe(latest_prices[['symbol', 'price', 'timestamp']])
             
-            # Graphique des prix récents pour un symbole sélectionné
+            # Graphique des prix rÃ©cents pour un symbole sÃ©lectionnÃ©
             if not latest_prices.empty:
-                selected_stock = st.selectbox("Sélectionner une action:", latest_prices['symbol'].unique())
+                selected_stock = st.selectbox("SÃ©lectionner une action:", latest_prices['symbol'].unique())
                 stock_data = price_data[price_data['symbol'] == selected_stock].sort_values('timestamp')
                 
                 if len(stock_data) > 1:
@@ -369,16 +368,16 @@ def realtime_data_page(price_data, news_data):
                         stock_data,
                         x='timestamp',
                         y='price',
-                        title=f"Évolution du prix - {selected_stock}"
+                        title=f"Ã‰volution du prix - {selected_stock}"
                     )
                     st.plotly_chart(fig_price, use_container_width=True)
         else:
-            st.info("Aucune donnée de prix en temps réel disponible")
+            st.info("Aucune donnÃ©e de prix en temps rÃ©el disponible")
     
     with col2:
-        st.subheader("News Récentes")
+        st.subheader("News RÃ©centes")
         if not news_data.empty:
-            # Dernières news
+            # DerniÃ¨res news
             recent_news = news_data.sort_values('timestamp', ascending=False).head(10)
             for _, news in recent_news.iterrows():
                 with st.expander(f"{news.get('source', 'Unknown')} - {news.get('title', 'No title')[:50]}..."):
@@ -388,15 +387,15 @@ def realtime_data_page(price_data, news_data):
                     if 'content' in news and news['content']:
                         st.write(news['content'][:200] + "...")
         else:
-            st.info("Aucune news récente disponible")
+            st.info("Aucune news rÃ©cente disponible")
 
     # Alertes et notifications
-    st.subheader("=¨ Alertes")
+    st.subheader("Alertes")
     if not price_data.empty:
-        # Exemple d'alertes basées sur les données
-        st.info("Système d'alertes à implémenter")
+        # Exemple d'alertes basÃ©es sur les donnÃ©es
+        st.info("SystÃ¨me d'alertes Ã  implÃ©menter")
     else:
-        st.warning("Connectez les données en temps réel pour activer les alertes")
+        st.warning("Connectez les donnÃ©es en temps rÃ©el pour activer les alertes")
 
 if __name__ == "__main__":
     main()
