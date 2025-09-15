@@ -125,4 +125,21 @@ class AdvancedSignalGenerator:
         else:
             self.model=LSTMGenerator(input_dim=15)
     
-    
+
+    def extract_features(self,symbol:str,current_data:Dict)->np.ndarray:
+        """Extract comprehensive features for a given symbol"""
+
+        try:
+
+            ticker=yf.Ticker(symbol)
+            hist=ticker.history(period="30d",interval="1h")
+
+            if hist.empty:
+                return None
+
+            prices=hist['Close']
+            volume=hist['Volume']
+            current_price=current_data.get("price",float(prices.iloc[-1]))
+            sentiment_score=current_data.get("sentiment_score",0.0)
+
+            rsi=self.
