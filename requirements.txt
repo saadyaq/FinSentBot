@@ -14,6 +14,7 @@ beautifulsoup4
 
 #Dashboard
 streamlit
+plotly
 
 #Utilitaires
 pandas
