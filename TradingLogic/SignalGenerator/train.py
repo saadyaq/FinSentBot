@@ -99,3 +99,13 @@ class LSTMGenerator(nn.Module):
             nn.Linear(hidden_dim,1),
             nn.Sigmoid()
         )
+    
+    def forward(self,x):
+
+        lstm_out,_=self.lstm(x)
+        attn_out, _=self.attention(lstm_out,lstm_out,lstm_out)
+        last_hidden=attn_out[:,-1,:]
+        logits=self.classifier(last_hidden)
+        confidence=self.confidence(logits)
+
+        return logits, confidence 
