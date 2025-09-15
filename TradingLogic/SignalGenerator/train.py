@@ -45,4 +45,15 @@ class TechnicalIndicators:
     @staticmethod
     def bollinger_bands(prices: pd.Series, window:int=20) ->Tuple[float,float,float]:
         """ Bollinger Bands (upper,middle,low)"""
-        
+        if len(prices) < window :
+            current_price=float(prices.iloc[-1])
+            return current_price *1.02, current_price, current_price *0.98
+        sma=prices.rolling(window=window).mean()
+        std=prices.rolling(window=window).std()
+
+        upper=sma + (std*2)
+        lower= sma - (std*2)
+
+        return float(upper.iloc[-1]), (float(sma.iloc[-1])), float(lower.iloc[-1])
+    
+    
