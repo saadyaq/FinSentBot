@@ -1,6 +1,6 @@
 
 from .signal_generator import SignalGenerator, TradingSignal
-from .training import ModelTrainer, train_model_cli
+from .train import ModelTrainer, train_model_cli
 from .models import LSTMSignalGenerator, SimpleMLP
 
 __all__ = [
