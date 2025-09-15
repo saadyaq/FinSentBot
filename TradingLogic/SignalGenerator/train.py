@@ -28,5 +28,21 @@ class TechnicalIndicators:
 
     @staticmethod
     def rsi(prices:pd.Series, window:int =14) ->float:
-        
+        """Relative Strength Index"""
 
+        if len(prices) < window +1 :
+            return 50.0 #Neutral 
+        
+        delta= prices.diff()
+        gain=(delta.where(delta>0.0)).rolling(window=window).mean()
+        loss=(delta.where(delta<0.0)).rolling(window=window).mean()
+
+        rs=gain/loss
+
+        rsi=100 - (100/(1+rs))
+        return float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else 50.0
+    
+    @staticmethod
+    def bollinger_bands(prices: pd.Series, window:int=20) ->Tuple[float,float,float]:
+        """ Bollinger Bands (upper,middle,low)"""
+        
