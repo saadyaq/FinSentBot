@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 import re
 from datetime import datetime, timedelta
 import json
+from urllib.parse import quote_plus
 
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
@@ -63,7 +64,8 @@ def fetch_twitter_posts():
     for instance in working_instances[:2]:  # Use max 2 working instances
         try:
             for hashtag in FINANCIAL_HASHTAGS[:3]:  # Limit to avoid rate limiting
-                search_url = f"{instance}/search?f=tweets&q={hashtag}"
+                encoded_query = quote_plus(hashtag)  # Nitter expects encoded hash symbol
+                search_url = f"{instance}/search?f=tweets&q={encoded_query}"
                 
                 try:
                     response = requests.get(search_url, headers=headers, timeout=15)
