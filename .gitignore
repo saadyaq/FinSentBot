@@ -4,6 +4,7 @@ notes.txt
 # Data files
 data/
 !data/scripts/
+data/training_datasets/
 
 
 *.jsonl
