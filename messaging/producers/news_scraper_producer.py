@@ -17,7 +17,6 @@ from messaging.producers.scrapers.src.scraper_reuters_business import fetch_reut
 from messaging.producers.scrapers.src.scraper_seeking_alpha import fetch_seeking_alpha_article_links_requests as fetch_seeking_alpha_links, extract_article_content as extract_seeking_alpha
 from messaging.producers.scrapers.src.scraper_reddit import fetch_reddit_posts
 from messaging.producers.scrapers.src.scraper_stocktwits import fetch_stocktwits_posts
-from messaging.producers.scrapers.src.scraper_twitter import fetch_twitter_posts
 
 # === S&P 500 Company Keywords ===
 SP500_KEYWORDS = {
@@ -154,9 +153,6 @@ def scrape_social_media_and_send(source, fetch_posts_func):
             elif source == "StockTwits":
                 content, symbol, url = post_data
                 title = f"StockTwits post about ${symbol}"
-            elif source == "Twitter":
-                content, url = post_data
-                title = f"Twitter post: {content[:50]}..."
             else:
                 continue
                 
@@ -208,7 +204,6 @@ def main():
         # Social media scrapers
         scrape_social_media_and_send("Reddit", fetch_reddit_posts)
         scrape_social_media_and_send("StockTwits", fetch_stocktwits_posts)
-        scrape_social_media_and_send("Twitter", fetch_twitter_posts)
         
         print("\n✅ Scraping round complete. Sleeping for 20 minutes...\n")
         time.sleep(1200)  # Every 20 minutes
