@@ -50,8 +50,11 @@ def load_news_sentiment():
             for line in f:
                 news_data.append(json.loads(line))
         df = pd.DataFrame(news_data)
-        if not df.empty and 'timestamp' in df.columns:
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
+        if not df.empty and "timestamp" in df.columns:
+            df["timestamp"] = pd.to_datetime(
+                df["timestamp"], errors="coerce", utc=True
+            ).dt.tz_convert(None)
+            df = df.dropna(subset=["timestamp"])
         return df
     except Exception as e:
         st.error(f"Erreur lors du chargement des données de sentiment: {e}")
@@ -66,8 +69,11 @@ def load_stock_prices():
             for line in f:
                 price_data.append(json.loads(line))
         df = pd.DataFrame(price_data)
-        if not df.empty and 'timestamp' in df.columns:
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
+        if not df.empty and "timestamp" in df.columns:
+            df["timestamp"] = pd.to_datetime(
+                df["timestamp"], errors="coerce", utc=True
+            ).dt.tz_convert(None)
+            df = df.dropna(subset=["timestamp"])
         return df
     except Exception as e:
         st.error(f"Erreur lors du chargement des prix: {e}")
@@ -271,8 +277,15 @@ def sentiment_analysis_page(news_data, training_data):
         st.subheader("Évolution du sentiment dans le temps")
         
         # Grouper par jour
-        data_to_use['date'] = pd.to_datetime(data_to_use['timestamp']).dt.date
-        daily_sentiment = data_to_use.groupby('date')['sentiment_score'].agg(['mean', 'count']).reset_index()
+        data_to_use["date"] = pd.to_datetime(
+            data_to_use["timestamp"], errors="coerce"
+        ).dt.date
+        data_to_use = data_to_use.dropna(subset=["date"])
+        daily_sentiment = (
+            data_to_use.groupby("date")["sentiment_score"]
+            .agg(["mean", "count"])
+            .reset_index()
+        )
         
         fig_timeline = px.line(
             daily_sentiment,
