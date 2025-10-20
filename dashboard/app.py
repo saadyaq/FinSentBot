@@ -1,3 +1,10 @@
+from pathlib import Path
+import sys
+
+BASE_PATH = Path(__file__).resolve().parents[1]
+if str(BASE_PATH) not in sys.path:
+    sys.path.insert(0, str(BASE_PATH))
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7,7 +14,6 @@ from plotly.subplots import make_subplots
 import json
 from datetime import datetime, timedelta
 import os
-from pathlib import Path
 from typing import Dict
 
 import yfinance as yf
@@ -21,17 +27,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Configuration des chemins
-BASE_PATH = "/home/saadyaq/SE/Python/finsentbot"
-DATA_PATH = f"{BASE_PATH}/data"
-RAW_DATA_PATH = f"{DATA_PATH}/raw"
-TRAINING_DATA_PATH = f"{DATA_PATH}/training_datasets"
+DATA_PATH = BASE_PATH / "data"
+RAW_DATA_PATH = DATA_PATH / "raw"
+TRAINING_DATA_PATH = DATA_PATH / "training_datasets"
 
 @st.cache_data
 def load_training_data():
     """Charger le dataset d'entraînement"""
     try:
-        df = pd.read_csv(f"{TRAINING_DATA_PATH}/train.csv")
+        df = pd.read_csv(TRAINING_DATA_PATH / "train.csv")
         return df
     except Exception as e:
         st.error(f"Erreur lors du chargement des données d'entraînement: {e}")
@@ -42,7 +46,7 @@ def load_news_sentiment():
     """Charger les données de sentiment des news"""
     try:
         news_data = []
-        with open(f"{RAW_DATA_PATH}/news_sentiment.jsonl", 'r') as f:
+        with open(RAW_DATA_PATH / "news_sentiment.jsonl", 'r') as f:
             for line in f:
                 news_data.append(json.loads(line))
         df = pd.DataFrame(news_data)
@@ -58,7 +62,7 @@ def load_stock_prices():
     """Charger les prix des actions"""
     try:
         price_data = []
-        with open(f"{RAW_DATA_PATH}/stock_prices.jsonl", 'r') as f:
+        with open(RAW_DATA_PATH / "stock_prices.jsonl", 'r') as f:
             for line in f:
                 price_data.append(json.loads(line))
         df = pd.DataFrame(price_data)
@@ -70,7 +74,7 @@ def load_stock_prices():
         return pd.DataFrame()
 
 @st.cache_data
-def discover_model_checkpoints(base_dir: str = "models/signal_generator") -> list[str]:
+def discover_model_checkpoints(base_dir: Path | str = BASE_PATH / "models" / "signal_generator") -> list[str]:
     """Retourne la liste des checkpoints signal_generator disponibles."""
     base_path = Path(base_dir)
     if not base_path.exists():
@@ -459,7 +463,7 @@ def ai_signal_generator_page():
     checkpoint_labels = []
     for path_str in checkpoints:
         try:
-            rel = Path(path_str).relative_to(Path(BASE_PATH))
+            rel = Path(path_str).relative_to(BASE_PATH)
             label = str(rel)
         except ValueError:
             label = path_str
