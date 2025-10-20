@@ -20,5 +20,9 @@ plotly
 pandas
 python-dotenv
 scikit-learn
+numpy
+matplotlib
+seaborn
+
 #Logging
 logging
