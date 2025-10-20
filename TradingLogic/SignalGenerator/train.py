@@ -13,6 +13,9 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader, Dataset, random_split
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 from .models import LSTMSignalGenerator, SimpleMLP
 
 
@@ -368,7 +371,66 @@ class ModelTrainer:
         print("Matrice de confusion :")
         print(cm)
 
-        return {"classification_report": report_text, "confusion_matrix": cm}
+        accuracy = float(np.trace(cm) / np.maximum(1, cm.sum()))
+
+        return {
+            "classification_report": report_text,
+            "confusion_matrix": cm,
+            "labels": list(self.label_encoder.classes_),
+            "accuracy": accuracy,
+        }
+
+    def save_training_artifacts(self, metrics: Dict[str, Any], output_dir: Path | str) -> None:
+        """Enregistre les graphiques et rapports d'entraînement."""
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        if self.history["train_loss"]:
+            epochs = list(range(1, len(self.history["train_loss"]) + 1))
+            fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+            axes[0].plot(epochs, self.history["train_loss"], label="Train")
+            axes[0].plot(epochs, self.history["val_loss"], label="Validation")
+            axes[0].set_title("Loss")
+            axes[0].set_xlabel("Epoch")
+            axes[0].set_ylabel("Loss")
+            axes[0].legend()
+
+            axes[1].plot(epochs, self.history["train_acc"], label="Train")
+            axes[1].plot(epochs, self.history["val_acc"], label="Validation")
+            axes[1].set_title("Accuracy")
+            axes[1].set_xlabel("Epoch")
+            axes[1].set_ylabel("Accuracy")
+            axes[1].legend()
+
+            fig.tight_layout()
+            fig.savefig(output_dir / "training_curves.png", dpi=300, bbox_inches="tight")
+            plt.close(fig)
+
+        report_text = metrics.get("classification_report")
+        if report_text:
+            (output_dir / "classification_report.txt").write_text(report_text, encoding="utf-8")
+
+        cm = metrics.get("confusion_matrix")
+        labels = metrics.get("labels")
+        if cm is not None and labels:
+            fig, ax = plt.subplots(figsize=(6, 5))
+            sns.heatmap(
+                cm,
+                annot=True,
+                fmt="d",
+                cmap="Blues",
+                xticklabels=labels,
+                yticklabels=labels,
+                cbar=False,
+                ax=ax,
+            )
+            ax.set_xlabel("Predicted")
+            ax.set_ylabel("Actual")
+            ax.set_title("Confusion Matrix")
+            fig.tight_layout()
+            fig.savefig(output_dir / "confusion_matrix.png", dpi=300, bbox_inches="tight")
+            plt.close(fig)
 
     def save_model(self, output_dir: Path | str) -> Path:
         if self.model is None or self.scaler is None or self.label_encoder is None:
@@ -441,6 +503,12 @@ def train_model_cli() -> None:
         help="Répertoire de sauvegarde du modèle.",
     )
     parser.add_argument(
+        "--artifacts-dir",
+        type=str,
+        default=None,
+        help="Répertoire où enregistrer les graphiques et rapports (par défaut le dossier de sortie du modèle).",
+    )
+    parser.add_argument(
         "--no-save",
         action="store_true",
         help="Ne pas sauvegarder le modèle après l'entraînement.",
@@ -473,12 +541,18 @@ def train_model_cli() -> None:
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
     )
-    trainer.evaluate(val_loader)
+    metrics = trainer.evaluate(val_loader)
 
+    output_dir: Path | None = None
     if not args.no_save:
         timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
         output_dir = Path(args.output_dir) / f"{args.model_type}_{timestamp}"
         trainer.save_model(output_dir)
+
+    artifacts_dir = Path(args.artifacts_dir) if args.artifacts_dir else output_dir
+    if artifacts_dir is not None:
+        trainer.save_training_artifacts(metrics, artifacts_dir)
+        print(f"Graphiques et rapports enregistrés dans: {artifacts_dir}")
 
 
 if __name__ == "__main__":
