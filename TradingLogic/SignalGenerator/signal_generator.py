@@ -39,6 +39,9 @@ class SignalGenerator:
         
         self.confidence_threshold = confidence_threshold
         self.tech_indicators = TechnicalIndicators()
+        self.feature_cols: list[str] = []
+        self.sequence_length: int = 1
+        self.model_type: str = "mlp"
         
         # Chargement du modèle entraîné
         print(f"📁 Chargement du modèle: {model_path}")
@@ -49,15 +52,23 @@ class SignalGenerator:
     def _load_model(self, model_path: str):
         """Charge le modèle et ses composants"""
         
-        checkpoint = torch.load(model_path, map_location='cpu')
-        
-        # Reconstruction du modèle selon son type
-        model_type = checkpoint['model_type']
-        
-        if model_type == "lstm":
-            self.model = LSTMSignalGenerator(input_dim=4)  # À adapter selon vos features
+        checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
+
+        self.model_type = checkpoint.get("model_type", "lstm")
+        self.feature_cols = checkpoint.get(
+            "feature_cols",
+            ["sentiment_score", "price_now", "price_future", "variation"],
+        )
+        self.sequence_length = int(checkpoint.get("sequence_length", 1))
+
+        input_dim = len(self.feature_cols)
+        if input_dim == 0:
+            input_dim = 4
+
+        if self.model_type == "lstm":
+            self.model = LSTMSignalGenerator(input_dim=input_dim)
         else:
-            self.model = SimpleMLP(input_dim=4)
+            self.model = SimpleMLP(input_dim=input_dim)
         
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.model.eval()
@@ -66,7 +77,7 @@ class SignalGenerator:
         self.scaler = checkpoint['scaler']
         self.label_encoder = checkpoint['label_encoder']
         
-        print(f"🤖 Modèle {model_type.upper()} chargé avec succès")
+        print(f"🤖 Modèle {self.model_type.upper()} chargé avec succès")
     
     def generate_signal(self, symbol: str, market_data: Dict) -> TradingSignal:
         """
@@ -117,12 +128,28 @@ class SignalGenerator:
         """Extrait les features pour le modèle (version simplifiée)"""
         
         try:
-            # Features basiques (à adapter selon votre modèle)
-            sentiment = market_data.get('sentiment_score', 0.0)
-            price = market_data.get('price', 0.0)
+            values = []
+            for col in self.feature_cols:
+                if col == "price_now":
+                    values.append(float(market_data.get("price", 0.0)))
+                elif col == "price_future":
+                    values.append(float(market_data.get("price_future", market_data.get("price", 0.0))))
+                elif col == "variation":
+                    if "variation" in market_data:
+                        values.append(float(market_data["variation"]))
+                    elif "price" in market_data and "previous_price" in market_data:
+                        prev_price = market_data["previous_price"]
+                        current_price = market_data["price"]
+                        if prev_price:
+                            values.append(float(current_price - prev_price) / float(prev_price))
+                        else:
+                            values.append(0.0)
+                    else:
+                        values.append(0.0)
+                else:
+                    values.append(float(market_data.get(col, 0.0)))
             
-            # TODO: Ajouter les indicateurs techniques complets
-            features = np.array([sentiment, price, 0.0, 0.0])  # Placeholder
+            features = np.array(values, dtype=np.float32)
             
             # Normalisation
             features_scaled = self.scaler.transform(features.reshape(1, -1))
@@ -137,15 +164,29 @@ class SignalGenerator:
         """Fait la prédiction avec le modèle"""
         
         with torch.no_grad():
-            # Conversion en tensor
-            if len(features.shape) == 1:
-                # Pour LSTM, créer une séquence
-                features_tensor = torch.FloatTensor(features).unsqueeze(0).unsqueeze(0)
+            features_array = np.asarray(features, dtype=np.float32)
+
+            if self.model_type == "lstm":
+                if features_array.ndim == 1:
+                    sequence = np.tile(features_array, (self.sequence_length, 1))
+                else:
+                    sequence = features_array.astype(np.float32)
+                    if sequence.shape[0] < self.sequence_length:
+                        pad_len = self.sequence_length - sequence.shape[0]
+                        padding = np.zeros(
+                            (pad_len, sequence.shape[1]), dtype=np.float32
+                        )
+                        sequence = np.vstack((padding, sequence))
+                    elif sequence.shape[0] > self.sequence_length:
+                        sequence = sequence[-self.sequence_length :]
+                features_tensor = torch.from_numpy(sequence).unsqueeze(0)
             else:
-                features_tensor = torch.FloatTensor(features).unsqueeze(0)
+                if features_array.ndim > 1:
+                    features_array = features_array[-1]
+                features_tensor = torch.from_numpy(features_array).unsqueeze(0)
             
             # Prédiction
-            logits, confidence = self.model(features_tensor)
+            logits, confidence = self.model(features_tensor.float())
             
             # Conversion en action
             probabilities = torch.softmax(logits, dim=1)

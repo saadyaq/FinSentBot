@@ -9,7 +9,7 @@ class LSTMSignalGenerator(nn.Module):
     Architecture :
     - LSTM multi-couches pour capturer les séquences temporelles
     - Attention pour se concentrer sur les patterns importants  
-    - Double sortie : prédiction + confiance
+    - Double sortie : logits de classification + confiance dérivée du softmax
     """
     
     def __init__(self, input_dim: int, hidden_dim: int = 64, 
@@ -42,14 +42,6 @@ class LSTMSignalGenerator(nn.Module):
             nn.Dropout(0.3),
             nn.Linear(hidden_dim // 2, output_dim)
         )
-        
-        # Estimateur de confiance
-        self.confidence_estimator = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 4),
-            nn.ReLU(),
-            nn.Linear(hidden_dim // 4, 1),
-            nn.Sigmoid()  # Sortie entre 0 et 1
-        )
     
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -73,7 +65,8 @@ class LSTMSignalGenerator(nn.Module):
         
         # Prédictions
         logits = self.classifier(final_hidden)
-        confidence = self.confidence_estimator(final_hidden)
+        probabilities = torch.softmax(logits, dim=1)
+        confidence = probabilities.max(dim=1, keepdim=True).values
         
         return logits, confidence
 
@@ -93,16 +86,10 @@ class SimpleMLP(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim // 2, output_dim)
         )
-        
-        self.confidence = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim // 4),
-            nn.ReLU(),
-            nn.Linear(hidden_dim // 4, 1),
-            nn.Sigmoid()
-        )
     
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward pass pour MLP simple"""
         logits = self.network(x)
-        conf = self.confidence(x)
-        return logits, conf
+        probabilities = torch.softmax(logits, dim=1)
+        confidence = probabilities.max(dim=1, keepdim=True).values
+        return logits, confidence
