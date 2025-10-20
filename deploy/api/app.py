@@ -10,6 +10,10 @@ from typing import Any, Dict, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+import torch
+
+import torch
+
 from TradingLogic.SignalGenerator.signal_generator import SignalGenerator, TradingSignal
 
 app = FastAPI(title="FinSentBot Signal Generator API")

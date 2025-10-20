@@ -1,0 +1,28 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/api/Dockerfile
+    image: finsentbot-api:local
+    environment:
+      - MODEL_PATH=/app/model/signal_generator.pth
+      - CONFIDENCE_THRESHOLD=0.7
+    volumes:
+      - ../build/model:/app/model:ro
+    ports:
+      - "8000:8000"
+
+  dashboard:
+    build:
+      context: ..
+      dockerfile: deploy/dashboard/Dockerfile
+    image: finsentbot-dashboard:local
+    environment:
+      - PREDICTION_API_URL=http://api:8000/predict
+      - PREDICTION_HEALTH_URL=http://api:8000/health
+    depends_on:
+      - api
+    ports:
+      - "8502:8501"
+    volumes:
+      - ../data:/app/data:ro

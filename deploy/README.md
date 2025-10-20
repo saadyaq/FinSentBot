@@ -66,4 +66,37 @@ The response contains action, confidence and trading levels (stop-loss / take-pr
 
 ---
 
-With these two steps you can package a trained checkpoint and run the inference service locally. Next steps are to containerise the Streamlit UI and orchestrate both services on AWS (ECS/Fargate, App Runner, etc.).
+## 3. Streamlit dashboard container
+
+The `deploy/dashboard/Dockerfile` builds a container for the UI. By default it uses the repo’s root `requirements.txt` and expects the inference API URL via `PREDICTION_API_URL`.
+
+```
+docker build -t finsentbot-dashboard -f deploy/dashboard/Dockerfile .
+docker run -p 8501:8501 \
+  -e PREDICTION_API_URL=http://localhost:8000/predict \
+  finsentbot-dashboard
+```
+
+If you prefer to run the dashboard with a local model (without the API), omit `PREDICTION_API_URL` and mount the model directory:
+
+```
+docker run -p 8501:8501 \
+  -v $(pwd)/models/signal_generator/mlp_20251020_204524:/app/models/signal_generator/mlp \
+  finsentbot-dashboard
+```
+
+Inside ECS or another orchestrator, set `PREDICTION_API_URL` (and optionally `PREDICTION_HEALTH_URL`) to point to the inference service.
+
+## 4. Local end-to-end test with Docker Compose
+
+Once you have exported a checkpoint to `build/model/`, you can launch both containers locally:
+
+```
+docker compose -f deploy/docker-compose.local.yml up --build
+```
+
+The API will be exposed on `http://localhost:8000` and the Streamlit dashboard on `http://localhost:8501`, already wired together.
+
+---
+
+With these assets you can package the model, serve it via FastAPI, and ship the Streamlit dashboard. Next steps are to orchestrate both services on AWS (ECS/Fargate, App Runner, etc.).
