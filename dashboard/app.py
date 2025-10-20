@@ -14,9 +14,10 @@ from plotly.subplots import make_subplots
 import json
 from datetime import datetime, timedelta
 import os
-from typing import Dict
+from typing import Dict, Optional
 
 import yfinance as yf
+import requests
 
 from TradingLogic.SignalGenerator.signal_generator import SignalGenerator, TradingSignal
 
@@ -30,6 +31,16 @@ st.set_page_config(
 DATA_PATH = BASE_PATH / "data"
 RAW_DATA_PATH = DATA_PATH / "raw"
 TRAINING_DATA_PATH = DATA_PATH / "training_datasets"
+INFERENCE_ENDPOINT = os.getenv("PREDICTION_API_URL")
+HEALTH_ENDPOINT = os.getenv("PREDICTION_HEALTH_URL")
+
+if INFERENCE_ENDPOINT:
+    INFERENCE_ENDPOINT = INFERENCE_ENDPOINT.rstrip("/")
+    if not HEALTH_ENDPOINT:
+        if INFERENCE_ENDPOINT.endswith("/predict"):
+            HEALTH_ENDPOINT = INFERENCE_ENDPOINT.rsplit("/", 1)[0] + "/health"
+        else:
+            HEALTH_ENDPOINT = f"{INFERENCE_ENDPOINT}/health"
 
 @st.cache_data
 def load_training_data():
@@ -92,6 +103,22 @@ def discover_model_checkpoints(base_dir: Path | str = BASE_PATH / "models" / "si
 def load_signal_generator_cached(model_path: str, confidence_threshold: float) -> SignalGenerator:
     """Charge et met en cache le générateur de signaux."""
     return SignalGenerator(model_path, confidence_threshold=confidence_threshold)
+
+
+@st.cache_data(show_spinner=False)
+def fetch_api_health(url: str) -> Optional[dict]:
+    try:
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
+        return response.json()
+    except Exception:
+        return None
+
+
+def call_prediction_api(url: str, payload: dict) -> dict:
+    response = requests.post(url, json=payload, timeout=10)
+    response.raise_for_status()
+    return response.json()
 
 def fetch_market_snapshot(symbol: str) -> Dict[str, float]:
     """Récupère un instantané de marché basique via yfinance."""
@@ -467,58 +494,90 @@ def ai_signal_generator_page():
     """Interface de génération de signaux en direct."""
     st.header("Générateur de Signaux IA")
 
-    checkpoints = discover_model_checkpoints()
-    if not checkpoints:
-        st.warning("Aucun modèle signal_generator.pth trouvé dans models/signal_generator.")
-        st.info("Lancez une phase d'entraînement pour générer un checkpoint avant d'utiliser cette page.")
-        return
+    use_remote = bool(INFERENCE_ENDPOINT)
+    generator: Optional[SignalGenerator] = None
+    model_metadata: dict = {}
 
-    checkpoint_labels = []
-    for path_str in checkpoints:
+    if use_remote:
+        st.info("Mode API externe activé (PREDICTION_API_URL).")
+        if HEALTH_ENDPOINT:
+            metadata = fetch_api_health(HEALTH_ENDPOINT)
+            if metadata is None:
+                st.error("Impossible de contacter l'API d'inférence (endpoint santé).")
+                return
+            model_metadata = metadata
+        else:
+            st.warning("Aucun endpoint santé spécifié ; les métadonnées du modèle ne seront pas affichées.")
+    else:
+        checkpoints = discover_model_checkpoints()
+        if not checkpoints:
+            st.warning("Aucun modèle signal_generator.pth trouvé dans models/signal_generator.")
+            st.info("Lancez un entraînement ou configurez PREDICTION_API_URL pour utiliser un endpoint distant.")
+            return
+
+        checkpoint_labels = []
+        for path_str in checkpoints:
+            try:
+                rel = Path(path_str).relative_to(BASE_PATH)
+                label = str(rel)
+            except ValueError:
+                label = path_str
+            checkpoint_labels.append(label)
+
+        newest_index = max(
+            range(len(checkpoints)), key=lambda idx: Path(checkpoints[idx]).stat().st_mtime
+        )
+
+        selected_label = st.selectbox(
+            "Checkpoint du modèle",
+            checkpoint_labels,
+            index=newest_index,
+        )
+        selected_path = checkpoints[checkpoint_labels.index(selected_label)]
+
+        confidence_threshold = st.slider(
+            "Seuil de confiance minimum",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.7,
+            step=0.05,
+        )
+
         try:
-            rel = Path(path_str).relative_to(BASE_PATH)
-            label = str(rel)
-        except ValueError:
-            label = path_str
-        checkpoint_labels.append(label)
+            generator = load_signal_generator_cached(selected_path, confidence_threshold)
+        except Exception as exc:  # pylint: disable=broad-except
+            st.error(f"Erreur lors du chargement du modèle: {exc}")
+            return
 
-    newest_index = max(range(len(checkpoints)), key=lambda idx: Path(checkpoints[idx]).stat().st_mtime)
+        if st.session_state.get("last_model_path") != selected_path:
+            st.session_state["last_prediction"] = None
+        st.session_state["last_model_path"] = selected_path
 
-    selected_label = st.selectbox(
-        "Checkpoint du modèle",
-        checkpoint_labels,
-        index=newest_index,
-    )
-    selected_path = checkpoints[checkpoint_labels.index(selected_label)]
+        model_metadata = {
+            "model_type": generator.model_type.upper(),
+            "feature_count": len(generator.feature_cols),
+            "sequence_length": generator.sequence_length,
+            "feature_cols": generator.feature_cols,
+        }
 
-    confidence_threshold = st.slider(
-        "Seuil de confiance minimum",
-        min_value=0.0,
-        max_value=1.0,
-        value=0.7,
-        step=0.05,
-    )
+    info_cols = st.columns(3)
+    if "model_type" in model_metadata:
+        info_cols[0].metric("Type de modèle", str(model_metadata["model_type"]))
+    if "feature_count" in model_metadata:
+        info_cols[1].metric("Nombre de features", model_metadata["feature_count"])
+    if "sequence_length" in model_metadata:
+        info_cols[2].metric("Longueur séquence", model_metadata["sequence_length"])
 
-    try:
-        generator = load_signal_generator_cached(selected_path, confidence_threshold)
-    except Exception as exc:  # pylint: disable=broad-except
-        st.error(f"Erreur lors du chargement du modèle: {exc}")
-        return
-
-    if st.session_state.get("last_model_path") != selected_path:
-        st.session_state["last_prediction"] = None
-    st.session_state["last_model_path"] = selected_path
-
-    model_info_col1, model_info_col2, model_info_col3 = st.columns(3)
-    with model_info_col1:
-        st.metric("Type de modèle", generator.model_type.upper())
-    with model_info_col2:
-        st.metric("Nombre de features", len(generator.feature_cols))
-    with model_info_col3:
-        st.metric("Longueur séquence", generator.sequence_length)
-
-    with st.expander("Détails des features attendus"):
-        st.write(", ".join(generator.feature_cols))
+    if use_remote:
+        if st.session_state.get("last_model_path") != "api":
+            st.session_state["last_prediction"] = None
+        st.session_state["last_model_path"] = "api"
+    elif generator:
+        with st.expander("Détails des features attendus"):
+            st.write(", ".join(generator.feature_cols))
+    elif use_remote and model_metadata.get("feature_cols"):
+        with st.expander("Détails des features (API)"):
+            st.write(", ".join(model_metadata["feature_cols"]))
 
     default_market = {
         "price": 0.0,
@@ -618,7 +677,34 @@ def ai_signal_generator_page():
             return
 
         try:
-            signal: TradingSignal = generator.generate_signal(symbol, market_data)
+            if use_remote:
+                if not INFERENCE_ENDPOINT:
+                    st.error("Endpoint API non configuré.")
+                    return
+                payload_market = {
+                    "sentiment_score": sentiment_score,
+                    "price": current_price,
+                    "previous_price": previous_price if previous_price else None,
+                    "variation": variation,
+                    "price_future": future_price,
+                    "extra": {},
+                }
+                known_keys = set(payload_market.keys()) | {"sentiment_score"}
+                extras = {
+                    key: value
+                    for key, value in market_data.items()
+                    if key not in known_keys
+                }
+                if extras:
+                    payload_market["extra"] = extras
+                api_payload = {
+                    "symbol": symbol,
+                    "market_data": payload_market,
+                }
+                response = call_prediction_api(INFERENCE_ENDPOINT, api_payload)
+                signal = TradingSignal(**response)
+            else:
+                signal = generator.generate_signal(symbol, market_data)
             st.session_state["last_prediction"] = signal
         except Exception as exc:  # pylint: disable=broad-except
             st.error(f"Erreur lors de la génération du signal: {exc}")
@@ -670,9 +756,17 @@ def ai_signal_generator_page():
             "Les niveaux de stop loss / take profit sont fournis par la logique du modèle SignalGenerator."
         )
 
-        st.success(
-            f"Signal généré à {signal.timestamp}. Seuil utilisé : {confidence_threshold:.2f}"
+        active_threshold = (
+            model_metadata.get("confidence_threshold")
+            if use_remote
+            else confidence_threshold
         )
+        if active_threshold is not None:
+            st.success(
+                f"Signal généré à {signal.timestamp}. Seuil utilisé : {float(active_threshold):.2f}"
+            )
+        else:
+            st.success(f"Signal généré à {signal.timestamp}.")
 
 if __name__ == "__main__":
     main()
