@@ -176,10 +176,14 @@ class TradingModelTrainer:
         """
         logger.info("Début de l'entraînement")
 
+        # Créer le tokenizer
+        from transformers import AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained(self.config['bert_model_name'])
+
         # Créer les data loaders
         train_loader, val_loader, label_encoder = create_data_loaders(
             df,
-            tokenizer=None,  # Sera créé dans create_data_loaders
+            tokenizer=tokenizer,
             train_ratio=self.config['train_ratio'],
             batch_size=self.config['batch_size'],
             max_length=self.config['max_length']
@@ -209,7 +213,7 @@ class TradingModelTrainer:
         )
 
         criterion = nn.CrossEntropyLoss(weight=class_weights)
-        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2, verbose=True)
+        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2)
 
         # Variables pour early stopping
         best_val_loss = float('inf')
@@ -386,9 +390,11 @@ def main():
         model = trainer.train(df)
 
         # Créer les data loaders pour l'évaluation
+        from transformers import AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained(config.get('bert_model_name', 'ProsusAI/finbert'))
         _, val_loader, _ = create_data_loaders(
             df,
-            tokenizer=None,
+            tokenizer=tokenizer,
             train_ratio=config['train_ratio'],
             batch_size=config['batch_size'],
             max_length=config['max_length']
