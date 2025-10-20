@@ -1,0 +1,9 @@
+              precision    recall  f1-score   support
+
+         BUY      0.984     0.885     0.932      1403
+        HOLD      0.888     0.979     0.931      1462
+        SELL      0.953     0.947     0.950      1197
+
+    accuracy                          0.937      4062
+   macro avg      0.942     0.937     0.938      4062
+weighted avg      0.940     0.937     0.937      4062

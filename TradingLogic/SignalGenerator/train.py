@@ -11,7 +11,7 @@ import torch.optim as optim
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from torch.nn.utils import clip_grad_norm_
-from torch.utils.data import DataLoader, Dataset, random_split
+from torch.utils.data import DataLoader, Dataset, random_split, Subset
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -84,13 +84,16 @@ class TradingDataset(Dataset):
 
         symbols = df["symbol"].astype(str).tolist()
 
+        timestamps = df["news_timestamp"].tolist()
+
         if self.use_sequences:
-            self.X, self.y = self._build_sequences(
-                scaled_features, labels, symbols, self.sequence_length
+            self.X, self.y, self.sample_info = self._build_sequences(
+                scaled_features, labels, symbols, timestamps, self.sequence_length
             )
         else:
             self.X = scaled_features
             self.y = labels
+            self.sample_info = list(zip(symbols, timestamps))
 
         print(f"Dataset créé: {len(self.X)} échantillons ({'seq' if self.use_sequences else 'flat'})")
         print(f"Classes: {list(self.label_encoder.classes_)}")
@@ -101,8 +104,9 @@ class TradingDataset(Dataset):
         features: np.ndarray,
         labels: np.ndarray,
         symbols: list[str],
+        timestamps: list[pd.Timestamp],
         sequence_length: int,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray, list[Tuple[str, pd.Timestamp]]]:
         """Construit des séquences temporelles par symbole."""
         symbol_to_indices: Dict[str, list[int]] = {}
         for idx, symbol in enumerate(symbols):
@@ -111,6 +115,7 @@ class TradingDataset(Dataset):
         sequences = []
         seq_labels = []
         feature_dim = features.shape[1]
+        sample_info: list[Tuple[str, pd.Timestamp]] = []
 
         for symbol, indices in symbol_to_indices.items():
             for pos, current_idx in enumerate(indices):
@@ -125,8 +130,11 @@ class TradingDataset(Dataset):
 
                 sequences.append(window.astype(np.float32))
                 seq_labels.append(labels[current_idx])
+                sample_info.append(
+                    (symbol, timestamps[current_idx] if timestamps else pd.NaT)
+                )
 
-        return np.stack(sequences), np.array(seq_labels, dtype=np.int64)
+        return np.stack(sequences), np.array(seq_labels, dtype=np.int64), sample_info
 
     def __len__(self) -> int:
         return len(self.y)
@@ -172,6 +180,7 @@ class ModelTrainer:
         self.label_encoder: LabelEncoder | None = None
         self.feature_cols: list[str] | None = None
         self.sequence_length: int = 1
+        self.sample_info: list[Tuple[str, pd.Timestamp]] | None = None
         self.best_val_loss: float = float("inf")
         self.history: Dict[str, list[float]] = {
             "train_loss": [],
@@ -188,6 +197,8 @@ class ModelTrainer:
         sequence_length: int = 20,
         dataloader_timeout: float = 0.0,
         num_workers: int = 0,
+        split_strategy: str = "random",
+        val_symbols: list[str] | None = None,
     ) -> Tuple[DataLoader, DataLoader]:
         """Prépare les DataLoaders d'entraînement et validation."""
         df = pd.read_csv(csv_path)
@@ -198,15 +209,67 @@ class ModelTrainer:
             df, sequence_length=sequence_length, use_sequences=use_sequences
         )
 
-        val_size = max(1, int(len(dataset) * test_size))
-        train_size = len(dataset) - val_size
-        if train_size <= 0:
-            raise ValueError("Dataset trop petit pour créer un split train/validation.")
+        self.sample_info = dataset.sample_info
 
-        generator = torch.Generator().manual_seed(42)
-        train_dataset, val_dataset = random_split(
-            dataset, [train_size, val_size], generator=generator
-        )
+        split_strategy = (split_strategy or "random").lower()
+        if split_strategy not in {"random", "time", "symbol"}:
+            raise ValueError(f"Split strategy inconnue: {split_strategy}")
+
+        if split_strategy == "random":
+            val_size = max(1, int(len(dataset) * test_size))
+            train_size = len(dataset) - val_size
+            if train_size <= 0:
+                raise ValueError("Dataset trop petit pour créer un split train/validation.")
+
+            generator = torch.Generator().manual_seed(42)
+            train_dataset, val_dataset = random_split(
+                dataset, [train_size, val_size], generator=generator
+            )
+        else:
+            indices = np.arange(len(dataset))
+
+            if split_strategy == "time":
+                val_size = max(1, int(len(dataset) * test_size))
+                timestamps = []
+                for _, ts in self.sample_info:
+                    if isinstance(ts, pd.Timestamp):
+                        timestamp = ts
+                    else:
+                        timestamp = pd.to_datetime(ts) if ts else pd.NaT
+                    if pd.isna(timestamp):
+                        timestamp = pd.Timestamp.min
+                    timestamps.append(timestamp.value)
+
+                timestamps = np.array(timestamps, dtype=np.int64)
+                sorted_idx = np.argsort(timestamps)
+                val_indices = sorted_idx[-val_size:].tolist()
+                train_indices = sorted_idx[:-val_size].tolist()
+                if not train_indices or not val_indices:
+                    raise ValueError("Split temporel invalide: train ou validation vide.")
+            else:  # symbol-based
+                if not val_symbols:
+                    raise ValueError(
+                        "La stratégie 'symbol' nécessite de fournir --val-symbols."
+                    )
+                val_set = {s.strip() for s in val_symbols if s.strip()}
+                if not val_set:
+                    raise ValueError("Aucun symbole valide fourni pour --val-symbols.")
+
+                val_indices = [
+                    idx for idx, (symbol, _) in enumerate(self.sample_info) if symbol in val_set
+                ]
+                train_indices = [
+                    idx for idx, (symbol, _) in enumerate(self.sample_info) if symbol not in val_set
+                ]
+                if not val_indices:
+                    raise ValueError(
+                        "Aucun échantillon trouvé pour les symboles de validation fournis."
+                    )
+                if not train_indices:
+                    raise ValueError("Tous les échantillons appartiennent aux symboles de validation.")
+
+            train_dataset = Subset(dataset, train_indices)
+            val_dataset = Subset(dataset, val_indices)
 
         timeout_value = dataloader_timeout if (dataloader_timeout > 0 and num_workers > 0) else 0.0
         if dataloader_timeout > 0 and num_workers == 0:
@@ -485,6 +548,19 @@ def train_model_cli() -> None:
     parser.add_argument("--sequence-length", type=int, default=20)
     parser.add_argument("--test-size", type=float, default=0.2)
     parser.add_argument(
+        "--split-strategy",
+        type=str,
+        choices=["random", "time", "symbol"],
+        default="random",
+        help="Méthode de split train/validation.",
+    )
+    parser.add_argument(
+        "--val-symbols",
+        nargs="*",
+        default=None,
+        help="Symboles réservés à la validation (utilisé si --split-strategy symbol).",
+    )
+    parser.add_argument(
         "--dataloader-timeout",
         type=float,
         default=0.0,
@@ -532,6 +608,8 @@ def train_model_cli() -> None:
         sequence_length=args.sequence_length,
         dataloader_timeout=args.dataloader_timeout,
         num_workers=args.num_workers,
+        split_strategy=args.split_strategy,
+        val_symbols=args.val_symbols,
     )
 
     trainer.train(

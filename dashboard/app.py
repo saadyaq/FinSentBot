@@ -7,6 +7,12 @@ from plotly.subplots import make_subplots
 import json
 from datetime import datetime, timedelta
 import os
+from pathlib import Path
+from typing import Dict
+
+import yfinance as yf
+
+from TradingLogic.SignalGenerator.signal_generator import SignalGenerator, TradingSignal
 
 # Configuration de la page
 st.set_page_config(
@@ -63,6 +69,40 @@ def load_stock_prices():
         st.error(f"Erreur lors du chargement des prix: {e}")
         return pd.DataFrame()
 
+@st.cache_data
+def discover_model_checkpoints(base_dir: str = "models/signal_generator") -> list[str]:
+    """Retourne la liste des checkpoints signal_generator disponibles."""
+    base_path = Path(base_dir)
+    if not base_path.exists():
+        return []
+    checkpoints = sorted(base_path.glob("**/signal_generator.pth"))
+    return [str(path.resolve()) for path in checkpoints]
+
+@st.cache_resource
+def load_signal_generator_cached(model_path: str, confidence_threshold: float) -> SignalGenerator:
+    """Charge et met en cache le générateur de signaux."""
+    return SignalGenerator(model_path, confidence_threshold=confidence_threshold)
+
+def fetch_market_snapshot(symbol: str) -> Dict[str, float]:
+    """Récupère un instantané de marché basique via yfinance."""
+    ticker = yf.Ticker(symbol)
+    hist = ticker.history(period="5d", interval="1d")
+    if hist.empty:
+        raise ValueError(f"Aucune donnée trouvée pour {symbol}")
+    price_now = float(hist["Close"].iloc[-1])
+    previous_price = float(hist["Close"].iloc[-2]) if len(hist) > 1 else price_now
+    variation = (
+        (price_now - previous_price) / previous_price if previous_price else 0.0
+    )
+    market_timestamp = hist.index[-1].to_pydatetime()
+    return {
+        "price": price_now,
+        "previous_price": previous_price,
+        "variation": variation,
+        "price_future": price_now * (1 + variation),
+        "timestamp": market_timestamp.isoformat(),
+    }
+
 def main():
     st.title("FinSentBot Dashboard")
     st.markdown("Dashboard de visualisation pour l'analyse de sentiment financier et les signaux de trading")
@@ -71,7 +111,14 @@ def main():
     st.sidebar.title("Navigation")
     page = st.sidebar.selectbox(
         "Choisir une page:",
-        ["Vue d'ensemble", "Signaux de Trading", "Analyse de Sentiment", "Performance", "Données Temps Réel"]
+        [
+            "Vue d'ensemble",
+            "Signaux de Trading",
+            "Analyse de Sentiment",
+            "Performance",
+            "Données Temps Réel",
+            "Générateur IA",
+        ],
     )
 
     # Charger les données
@@ -89,6 +136,8 @@ def main():
         performance_page(training_data)
     elif page == "Données Temps Réel":
         realtime_data_page(price_data, news_data)
+    elif page == "Générateur IA":
+        ai_signal_generator_page()
 
 def overview_page(training_data, news_data, price_data):
     """Page vue d'ensemble"""
@@ -396,6 +445,217 @@ def realtime_data_page(price_data, news_data):
         st.info("Système d'alertes à implémenter")
     else:
         st.warning("Connectez les données en temps réel pour activer les alertes")
+
+def ai_signal_generator_page():
+    """Interface de génération de signaux en direct."""
+    st.header("Générateur de Signaux IA")
+
+    checkpoints = discover_model_checkpoints()
+    if not checkpoints:
+        st.warning("Aucun modèle signal_generator.pth trouvé dans models/signal_generator.")
+        st.info("Lancez une phase d'entraînement pour générer un checkpoint avant d'utiliser cette page.")
+        return
+
+    checkpoint_labels = []
+    for path_str in checkpoints:
+        try:
+            rel = Path(path_str).relative_to(Path(BASE_PATH))
+            label = str(rel)
+        except ValueError:
+            label = path_str
+        checkpoint_labels.append(label)
+
+    newest_index = max(range(len(checkpoints)), key=lambda idx: Path(checkpoints[idx]).stat().st_mtime)
+
+    selected_label = st.selectbox(
+        "Checkpoint du modèle",
+        checkpoint_labels,
+        index=newest_index,
+    )
+    selected_path = checkpoints[checkpoint_labels.index(selected_label)]
+
+    confidence_threshold = st.slider(
+        "Seuil de confiance minimum",
+        min_value=0.0,
+        max_value=1.0,
+        value=0.7,
+        step=0.05,
+    )
+
+    try:
+        generator = load_signal_generator_cached(selected_path, confidence_threshold)
+    except Exception as exc:  # pylint: disable=broad-except
+        st.error(f"Erreur lors du chargement du modèle: {exc}")
+        return
+
+    if st.session_state.get("last_model_path") != selected_path:
+        st.session_state["last_prediction"] = None
+    st.session_state["last_model_path"] = selected_path
+
+    model_info_col1, model_info_col2, model_info_col3 = st.columns(3)
+    with model_info_col1:
+        st.metric("Type de modèle", generator.model_type.upper())
+    with model_info_col2:
+        st.metric("Nombre de features", len(generator.feature_cols))
+    with model_info_col3:
+        st.metric("Longueur séquence", generator.sequence_length)
+
+    with st.expander("Détails des features attendus"):
+        st.write(", ".join(generator.feature_cols))
+
+    default_market = {
+        "price": 0.0,
+        "previous_price": 0.0,
+        "variation": 0.0,
+        "price_future": 0.0,
+        "sentiment_score": 0.0,
+        "timestamp": "",
+    }
+    if "market_data" not in st.session_state:
+        st.session_state["market_data"] = default_market.copy()
+    if "market_symbol" not in st.session_state:
+        st.session_state["market_symbol"] = "AAPL"
+
+    symbol = st.text_input(
+        "Symbole boursier (ex: AAPL)",
+        value=st.session_state["market_symbol"],
+        max_chars=10,
+    ).upper().strip()
+    st.session_state["market_symbol"] = symbol if symbol else st.session_state["market_symbol"]
+
+    fetch_col, sentiment_col = st.columns([1, 1])
+    with fetch_col:
+        if st.button("📈 Charger les données de marché (yfinance)"):
+            try:
+                snapshot = fetch_market_snapshot(symbol)
+                st.session_state["market_data"].update(snapshot)
+                st.success(
+                    f"Données mises à jour pour {symbol} (timestamp {snapshot.get('timestamp')})."
+                )
+            except Exception as exc:  # pylint: disable=broad-except
+                st.error(f"Impossible de récupérer les données de marché: {exc}")
+
+    with sentiment_col:
+        sentiment_score = st.slider(
+            "Score de sentiment",
+            min_value=-1.0,
+            max_value=1.0,
+            value=float(st.session_state["market_data"].get("sentiment_score", 0.0)),
+            step=0.01,
+        )
+
+    market_data = st.session_state["market_data"]
+
+    price_col, prev_price_col, variation_col = st.columns(3)
+    current_price = price_col.number_input(
+        "Prix actuel ($)",
+        value=float(market_data.get("price", 0.0)),
+        step=0.1,
+        format="%.2f",
+    )
+    previous_price = prev_price_col.number_input(
+        "Prix précédent ($)",
+        value=float(
+            market_data.get("previous_price", current_price if current_price else 0.0)
+        ),
+        step=0.1,
+        format="%.2f",
+    )
+    auto_variation = (
+        (current_price - previous_price) / previous_price if previous_price else 0.0
+    )
+    variation = variation_col.number_input(
+        "Variation (fraction)",
+        value=float(market_data.get("variation", auto_variation)),
+        step=0.0001,
+        format="%.4f",
+    )
+
+    future_price = st.number_input(
+        "Prix futur estimé ($)",
+        value=float(market_data.get("price_future", current_price * (1 + variation))),
+        step=0.1,
+        format="%.2f",
+    )
+
+    market_data.update(
+        {
+            "price": current_price,
+            "previous_price": previous_price,
+            "variation": variation,
+            "price_future": future_price,
+            "sentiment_score": sentiment_score,
+        }
+    )
+
+    st.caption(
+        "La variation est exprimée en fraction (ex: 0.025 = +2.5%). "
+        "Vous pouvez ajuster manuellement les valeurs pour simuler différents scénarios."
+    )
+
+    generate = st.button("🎯 Générer le signal IA")
+
+    if generate:
+        if not symbol:
+            st.error("Veuillez renseigner un symbole valide.")
+            return
+
+        try:
+            signal: TradingSignal = generator.generate_signal(symbol, market_data)
+            st.session_state["last_prediction"] = signal
+        except Exception as exc:  # pylint: disable=broad-except
+            st.error(f"Erreur lors de la génération du signal: {exc}")
+            return
+
+    if st.session_state.get("last_prediction"):
+        signal = st.session_state["last_prediction"]
+
+        st.subheader("Résultat du modèle")
+        metric_col1, metric_col2, metric_col3 = st.columns(3)
+        with metric_col1:
+            st.metric("Action suggérée", signal.action)
+        with metric_col2:
+            st.metric("Confiance", f"{signal.confidence * 100:.1f}%")
+        with metric_col3:
+            st.metric("Prix utilisé", f"${signal.price:.2f}")
+
+        st.markdown(f"**Raisonnement du modèle :** {signal.reasoning}")
+
+        extra_cols = st.columns(3)
+        with extra_cols[0]:
+            if signal.stop_loss:
+                st.metric("Stop Loss", f"${signal.stop_loss:.2f}")
+        with extra_cols[1]:
+            if signal.take_profit:
+                st.metric("Take Profit", f"${signal.take_profit:.2f}")
+        with extra_cols[2]:
+            if signal.position_size:
+                st.metric("Taille de position", f"{signal.position_size:.2f} unités")
+
+        if generator.feature_cols:
+            raw_features = {
+                col: market_data.get(col, 0.0) for col in generator.feature_cols
+            }
+            scaled_values = generator.scaler.transform(
+                np.array([list(raw_features.values())], dtype=np.float32)
+            )[0]
+            features_df = pd.DataFrame(
+                {
+                    "Feature": generator.feature_cols,
+                    "Valeur": [raw_features[col] for col in generator.feature_cols],
+                    "Normalisée": scaled_values,
+                }
+            )
+            st.subheader("Features utilisés par le modèle")
+            st.dataframe(features_df, use_container_width=True)
+
+        st.caption(
+            "Les niveaux de stop loss / take profit sont fournis par la logique du modèle SignalGenerator."
+        )
+
+        st.success(
+            f"Signal généré à {signal.timestamp}. Seuil utilisé : {confidence_threshold:.2f}"
+        )
 
 if __name__ == "__main__":
     main()
