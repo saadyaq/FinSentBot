@@ -4,7 +4,20 @@ from transformers import AutoTokenizer, AutoModel
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
 import pandas as pd
-from utils.logger import setup_logger
+import sys
+from pathlib import Path
+
+# Ajouter le répertoire parent au path pour les imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+try:
+    from utils.logger import setup_logger
+except ImportError:
+    # Fallback si le logger n'est pas disponible
+    import logging
+    def setup_logger(name):
+        logging.basicConfig(level=logging.INFO)
+        return logging.getLogger(name)
 
 logger = setup_logger(__name__)
 
